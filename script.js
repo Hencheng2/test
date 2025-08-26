@@ -7,7 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const header = document.getElementById('header');
 
     if (mobileMenuBtn && navLinks) {
-        mobileMenuBtn.addEventListener('click', () => {
+        console.log('Mobile menu button and nav links found.'); // Debugging line
+        mobileMenuBtn.addEventListener('click', (event) => {
+            event.stopPropagation(); // Prevent click from bubbling up and immediately closing
+            console.log('Mobile menu button clicked!'); // Debugging line
             navLinks.classList.toggle('active');
             // Toggle icon between bars and times
             mobileMenuBtn.innerHTML = navLinks.classList.contains('active') ? 
@@ -19,12 +22,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const navItems = navLinks.querySelectorAll('a');
         navItems.forEach(item => {
             item.addEventListener('click', () => {
+                console.log('Nav link clicked, closing menu.'); // Debugging line
                 if (navLinks.classList.contains('active')) {
                     navLinks.classList.remove('active');
                     mobileMenuBtn.innerHTML = '<i class="fas fa-bars"></i>';
                 }
             });
         });
+
+        // Close mobile menu when clicking outside of it
+        document.addEventListener('click', (event) => {
+            if (navLinks.classList.contains('active') && !navLinks.contains(event.target) && !mobileMenuBtn.contains(event.target)) {
+                console.log('Clicked outside menu, closing.'); // Debugging line
+                navLinks.classList.remove('active');
+                mobileMenuBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            }
+        });
+
+    } else {
+        console.error('Mobile menu button or nav links not found!'); // Debugging line
     }
 
     // Sticky Header
