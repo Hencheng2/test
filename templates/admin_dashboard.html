@@ -1,0 +1,716 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 sm:p-6 lg:p-8">
+    <h1 class="text-4xl font-extrabold text-gray-900 dark:text-gray-100 mb-8 text-center">Admin Dashboard</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <!-- Overview Cards -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Total Users</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.user_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Total Groups</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.group_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Total Posts</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.post_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Total Reels</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.reel_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Total Stories</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.story_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Pending Reports</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.pending_reports_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Active Warnings</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.active_warnings_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Active Bans</h2>
+            <p class="text-4xl font-bold text-gray-900 dark:text-gray-100">{{ counts.active_bans_count }}</p>
+        </div>
+    </div>
+
+    <hr class="my-10 border-gray-300 dark:border-gray-600">
+
+    <!-- Admin Actions Section -->
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">Admin Actions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+            <div>
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Post SociaFam Story</h3>
+                <p class="text-gray-700 dark:text-gray-300 text-sm mb-4">Create a public story visible to all users.</p>
+            </div>
+            <a href="{{ url_for('create_story') }}" class="mt-4 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
+                Post Story
+            </a>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+            <div>
+                <h3 class="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Broadcast Message</h3>
+                <p class="text-gray-700 dark:text-gray-300 text-sm mb-4">Send a system notification to all non-admin users.</p>
+            </div>
+            <button onclick="openBroadcastModal()" class="mt-4 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                Send Broadcast
+            </button>
+        </div>
+    </div>
+
+    <hr class="my-10 border-gray-300 dark:border-gray-600">
+
+    <!-- All Users Section -->
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">Manage Users</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-10">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Profile</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Full Name</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Warnings</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for user in all_users %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <img class="h-10 w-10 rounded-full" src="{{ user.profile_pic }}" alt="{{ user.username }} profile photo">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{{ user.username }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ user.real_name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if user.warnings_count > 0 %}bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100{% else %}bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100{% endif %}">
+                                {{ user.warnings_count }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if user.is_banned %}bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100{% else %}bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100{% endif %}">
+                                {% if user.is_banned %}Banned{% else %}Active{% endif %}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="{{ url_for('profile', username=user.username) }}?admin_view=true" target="_blank" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600 mr-3">View</a>
+                            {% if not user.is_banned %}
+                            <button onclick="openWarnUserModal({{ user.id }})" class="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-600 mr-3">Warn</button>
+                            <button onclick="openBanUserModal({{ user.id }})" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600 mr-3">Ban</button>
+                            {% else %}
+                            <button onclick="unbanUser({{ user.id }})" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-600 mr-3">Unban</button>
+                            {% endif %}
+                            <button onclick="deleteUser({{ user.id }})" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-600">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <hr class="my-10 border-gray-300 dark:border-gray-600">
+
+    <!-- All Groups Section -->
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">Manage Groups</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-10">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Profile</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Group Name</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Members</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Reports</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for group in all_groups %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <img class="h-10 w-10 rounded-full" src="{{ group.profile_pic }}" alt="{{ group.name }} profile photo">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{{ group.name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ group.member_count }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if group.reports_count > 0 %}bg-orange-100 text-orange-800 dark:bg-orange-700 dark:text-orange-100{% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100{% endif %}">
+                                {{ group.reports_count }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if group.is_banned %}bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100{% else %}bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100{% endif %}">
+                                {% if group.is_banned %}Banned{% else %}Active{% endif %}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="#" onclick="viewGroupProfile({{ group.id }})" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600 mr-3">View</a>
+                            {% if not group.is_banned %}
+                            <button onclick="openBanGroupModal({{ group.id }})" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600 mr-3">Ban</button>
+                            {% else %}
+                            <button onclick="unbanGroup({{ group.id }})" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-600 mr-3">Unban</button>
+                            {% endif %}
+                            <button onclick="deleteGroup({{ group.id }})" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-600">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <hr class="my-10 border-gray-300 dark:border-gray-600">
+
+    <!-- Pending Reports Section -->
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">Pending Reports</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-10">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Reported By</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Item Type</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Reported Item</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Reason</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Timestamp</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for report in pending_reports %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{{ report.reported_by_username }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ report.reported_item_type | capitalize }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            {% if report.reported_item_type == 'user' %}{{ report.reported_item_username }}
+                            {% elif report.reported_item_type == 'group' %}{{ report.reported_item_name }}
+                            {% else %}{{ report.reported_item_id }}
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ report.reason }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ moment(report.timestamp).format('YYYY-MM-DD HH:mm') }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button onclick="handleReport({{ report.id }}, 'warn')" class="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-600 mr-3">Warn</button>
+                            <button onclick="handleReport({{ report.id }}, 'ban')" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-600 mr-3">Ban</button>
+                            <button onclick="handleReport({{ report.id }}, 'ignore')" class="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-600">Ignore</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <hr class="my-10 border-gray-300 dark:border-gray-600">
+
+    <!-- Support Chats Overview Section -->
+    <h2 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">Support Chats Overview</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 mb-10">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last Message</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Unread (Admin)</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for chat in support_chats_overview %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <img class="h-10 w-10 rounded-full mr-3" src="{{ chat.user_profile_pic }}" alt="{{ chat.user_username }} profile photo">
+                                <div>
+                                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ chat.user_real_name }}</div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400">@{{ chat.user_username }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ chat.last_message_snippet }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            {% if chat.unread_admin_messages_count > 0 %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100">
+                                {{ chat.unread_admin_messages_count }}
+                            </span>
+                            {% else %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+                                0
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="{{ url_for('admin_support_chat', chat_id=chat.chat_id) }}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-600">View Chat</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modals for Admin Actions (Hidden by default) -->
+
+<!-- Broadcast Message Modal -->
+<div id="broadcastModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden flex items-center justify-center z-50">
+    <div class="relative p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Send Broadcast Message</h3>
+        <textarea id="broadcastMessageContent" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100 mb-4" rows="4" placeholder="Enter message..."></textarea>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeBroadcastModal()" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-700">Cancel</button>
+            <button onclick="sendBroadcast()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Warn User Modal -->
+<div id="warnUserModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden flex items-center justify-center z-50">
+    <div class="relative p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Warn User <span id="warnUsername" class="text-indigo-600 dark:text-indigo-400"></span></h3>
+        <input type="hidden" id="warnUserId">
+        <div class="mb-4">
+            <label for="warnTitle" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Warning Title:</label>
+            <input type="text" id="warnTitle" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100" placeholder="e.g., Content Violation">
+        </div>
+        <div class="mb-4">
+            <label for="warnDescription" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description:</label>
+            <textarea id="warnDescription" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100" rows="3" placeholder="Detailed reason for warning"></textarea>
+        </div>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeWarnUserModal()" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-700">Cancel</button>
+            <button onclick="warnUser()" class="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">Warn</button>
+        </div>
+    </div>
+</div>
+
+<!-- Ban User Modal -->
+<div id="banUserModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden flex items-center justify-center z-50">
+    <div class="relative p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Ban User <span id="banUsername" class="text-indigo-600 dark:text-indigo-400"></span></h3>
+        <input type="hidden" id="banUserId">
+        <div class="mb-4">
+            <label for="banReason" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason for Ban:</label>
+            <textarea id="banReason" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100" rows="3" placeholder="e.g., Repeated community guideline violations"></textarea>
+        </div>
+        <div class="mb-4">
+            <label for="banDuration" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ban Duration:</label>
+            <select id="banDuration" onchange="toggleBanDays()" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100">
+                <option value="temporary">Temporary</option>
+                <option value="permanent">Permanent</option>
+            </select>
+        </div>
+        <div id="banDaysContainer" class="mb-4">
+            <label for="banDays" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Days (for temporary ban):</label>
+            <input type="number" id="banDays" value="7" min="1" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100">
+        </div>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeBanUserModal()" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-700">Cancel</button>
+            <button onclick="banUser()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Ban</button>
+        </div>
+    </div>
+</div>
+
+<!-- Ban Group Modal -->
+<div id="banGroupModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden flex items-center justify-center z-50">
+    <div class="relative p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Ban Group <span id="banGroupName" class="text-indigo-600 dark:text-indigo-400"></span></h3>
+        <input type="hidden" id="banGroupId">
+        <div class="mb-4">
+            <label for="banGroupReason" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason for Ban:</label>
+            <textarea id="banGroupReason" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100" rows="3" placeholder="e.g., Inappropriate content, rule violation"></textarea>
+        </div>
+        <div class="mb-4">
+            <label for="banGroupDuration" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ban Duration:</label>
+            <select id="banGroupDuration" onchange="toggleBanGroupDays()" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100">
+                <option value="temporary">Temporary</option>
+                <option value="permanent">Permanent</option>
+            </select>
+        </div>
+        <div id="banGroupDaysContainer" class="mb-4">
+            <label for="banGroupDays" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Days (for temporary ban):</label>
+            <input type="number" id="banGroupDays" value="7" min="1" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 dark:text-gray-100">
+        </div>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeBanGroupModal()" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-700">Cancel</button>
+            <button onclick="banGroup()" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Ban</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    function showFlashMessage(message, category) {
+        const flashContainer = document.getElementById('flash-messages');
+        if (!flashContainer) {
+            console.error('Flash message container not found.');
+            return;
+        }
+
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `p-3 rounded-md text-sm font-medium flex items-center justify-between shadow-md mb-2
+                              {% if category == 'success' %}bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100
+                              {% elif category == 'danger' %}bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100
+                              {% elif category == 'info' %}bg-blue-100 text-blue-800 dark:bg-blue-700 dark:text-blue-100
+                              {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100{% endif %}`;
+        alertDiv.innerHTML = `
+            <span>${message}</span>
+            <button class="ml-4 text-current hover:opacity-75" onclick="this.parentElement.remove()">
+                &times;
+            </button>
+        `;
+        flashContainer.appendChild(alertDiv);
+
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000); // Messages disappear after 5 seconds
+    }
+
+
+    // --- Broadcast Message Modal ---
+    function openBroadcastModal() {
+        document.getElementById('broadcastModal').classList.remove('hidden');
+    }
+
+    function closeBroadcastModal() {
+        document.getElementById('broadcastModal').classList.add('hidden');
+        document.getElementById('broadcastMessageContent').value = '';
+    }
+
+    async function sendBroadcast() {
+        const message = document.getElementById('broadcastMessageContent').value;
+        if (!message) {
+            showFlashMessage('Broadcast message cannot be empty.', 'danger');
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("api_admin_broadcast_message") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ message: message })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                closeBroadcastModal();
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error sending broadcast:', error);
+            showFlashMessage('Failed to send broadcast message.', 'danger');
+        }
+    }
+
+    // --- Warn User Modal ---
+    function openWarnUserModal(userId) {
+        document.getElementById('warnUserId').value = userId;
+        const user = {{ all_users | tojson | safe }}.find(u => u.id === userId);
+        document.getElementById('warnUsername').textContent = user ? `@${user.username}` : '';
+        document.getElementById('warnUserModal').classList.remove('hidden');
+    }
+
+    function closeWarnUserModal() {
+        document.getElementById('warnUserModal').classList.add('hidden');
+        document.getElementById('warnUserId').value = '';
+        document.getElementById('warnTitle').value = '';
+        document.getElementById('warnDescription').value = '';
+    }
+
+    async function warnUser() {
+        const userId = document.getElementById('warnUserId').value;
+        const title = document.getElementById('warnTitle').value;
+        const description = document.getElementById('warnDescription').value;
+
+        if (!title || !description) {
+            showFlashMessage('Warning title and description are required.', 'danger');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/warn_user/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, description })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                closeWarnUserModal();
+                location.reload(); // Reload to update user status
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error warning user:', error);
+            showFlashMessage('Failed to warn user.', 'danger');
+        }
+    }
+
+    // --- Ban User Modal ---
+    function toggleBanDays() {
+        const duration = document.getElementById('banDuration').value;
+        document.getElementById('banDaysContainer').classList.toggle('hidden', duration === 'permanent');
+    }
+
+    function openBanUserModal(userId) {
+        document.getElementById('banUserId').value = userId;
+        const user = {{ all_users | tojson | safe }}.find(u => u.id === userId);
+        document.getElementById('banUsername').textContent = user ? `@${user.username}` : '';
+        document.getElementById('banDuration').value = 'temporary';
+        document.getElementById('banDays').value = '7';
+        toggleBanDays(); // Set initial state
+        document.getElementById('banUserModal').classList.remove('hidden');
+    }
+
+    function closeBanUserModal() {
+        document.getElementById('banUserModal').classList.add('hidden');
+        document.getElementById('banUserId').value = '';
+        document.getElementById('banReason').value = '';
+    }
+
+    async function banUser() {
+        const userId = document.getElementById('banUserId').value;
+        const reason = document.getElementById('banReason').value;
+        const duration = document.getElementById('banDuration').value;
+        const days = duration === 'temporary' ? parseInt(document.getElementById('banDays').value) : null;
+
+        if (!reason) {
+            showFlashMessage('Reason for ban is required.', 'danger');
+            return;
+        }
+        if (duration === 'temporary' && (isNaN(days) || days < 1)) {
+            showFlashMessage('Valid number of days is required for temporary ban.', 'danger');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/ban_user/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ reason, duration, days })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                closeBanUserModal();
+                location.reload(); // Reload to update user status
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error banning user:', error);
+            showFlashMessage('Failed to ban user.', 'danger');
+        }
+    }
+
+    async function unbanUser(userId) {
+        if (!confirm('Are you sure you want to unban this user?')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/unban_user/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                location.reload();
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error unbanning user:', error);
+            showFlashMessage('Failed to unban user.', 'danger');
+        }
+    }
+
+    async function deleteUser(userId) {
+        if (!confirm('Are you sure you want to permanently delete this user and all their data? This cannot be undone.')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/delete_user/${userId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                location.reload();
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            showFlashMessage('Failed to delete user.', 'danger');
+        }
+    }
+
+    // --- Group Management ---
+    function viewGroupProfile(groupId) {
+        // Corrected logic to ensure groupId is a valid integer
+        if (groupId && Number.isInteger(groupId)) {
+            window.location.href = `{{ url_for('view_group_profile', group_id=0) }}${groupId}?admin_view=true`.replace('/0?', '/');
+        } else {
+            showFlashMessage('Invalid group ID.', 'danger');
+        }
+    }
+
+    function toggleBanGroupDays() {
+        const duration = document.getElementById('banGroupDuration').value;
+        document.getElementById('banGroupDaysContainer').classList.toggle('hidden', duration === 'permanent');
+    }
+
+    function openBanGroupModal(groupId) {
+        document.getElementById('banGroupId').value = groupId;
+        const group = {{ all_groups | tojson | safe }}.find(g => g.id === groupId);
+        document.getElementById('banGroupName').textContent = group ? `"${group.name}"` : '';
+        document.getElementById('banGroupDuration').value = 'temporary';
+        document.getElementById('banGroupDays').value = '7';
+        toggleBanGroupDays(); // Set initial state
+        document.getElementById('banGroupModal').classList.remove('hidden');
+    }
+
+    function closeBanGroupModal() {
+        document.getElementById('banGroupModal').classList.add('hidden');
+        document.getElementById('banGroupId').value = '';
+        document.getElementById('banGroupReason').value = '';
+    }
+
+    async function banGroup() {
+        const groupId = document.getElementById('banGroupId').value;
+        const reason = document.getElementById('banGroupReason').value;
+        const duration = document.getElementById('banGroupDuration').value;
+        const days = duration === 'temporary' ? parseInt(document.getElementById('banGroupDays').value) : null;
+
+        if (!reason) {
+            showFlashMessage('Reason for ban is required.', 'danger');
+            return;
+        }
+        if (duration === 'temporary' && (isNaN(days) || days < 1)) {
+            showFlashMessage('Valid number of days is required for temporary ban.', 'danger');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/ban_group/${groupId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ reason, duration, days })
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                closeBanGroupModal();
+                location.reload(); // Reload to update group status
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error banning group:', error);
+            showFlashMessage('Failed to ban group.', 'danger');
+        }
+    }
+
+    async function unbanGroup(groupId) {
+        if (!confirm('Are you sure you want to unban this group?')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/unban_group/${groupId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                location.reload();
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error unbanning group:', error);
+            showFlashMessage('Failed to unban group.', 'danger');
+        }
+    }
+
+    async function deleteGroup(groupId) {
+        if (!confirm('Are you sure you want to permanently delete this group and all its data? This cannot be undone.')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/admin/delete_group/${groupId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                location.reload();
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('Error deleting group:', error);
+            showFlashMessage('Failed to delete group.', 'danger');
+        }
+    }
+
+    // --- Report Handling ---
+    async function handleReport(reportId, action) {
+        let confirmationMessage = '';
+        if (action === 'warn') {
+            confirmationMessage = 'Are you sure you want to warn the reported item/user?';
+        } else if (action === 'ban') {
+            confirmationMessage = 'Are you sure you want to ban the reported item/user? This is a serious action.';
+        } else if (action === 'ignore') {
+            confirmationMessage = 'Are you sure you want to ignore this report?';
+        }
+
+        if (!confirm(confirmationMessage)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/handle_report/${reportId}/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showFlashMessage(data.message, 'success');
+                location.reload(); // Reload to update report status
+            } else {
+                showFlashMessage(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error(`Error handling report with action ${action}:`, error);
+            showFlashMessage('Failed to handle report.', 'danger');
+        }
+    }
+</script>
+{% endblock %}
