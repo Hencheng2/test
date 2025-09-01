@@ -1,0 +1,32 @@
+<!-- templates/post_snippet.html -->
+{% for post in posts %}
+<div class="post">
+    <div class="post-header">
+        <img src="{{ url_for('uploaded_file', filename=post.user.profile_pic) }}" class="profile-pic-small">
+        <span>{{ post.user.real_name or post.user.username }}</span>
+        <span>{{ post.timestamp }}</span>
+    </div>
+    {% if post.content %}<p>{{ post.content }}</p>{% endif %}
+    {% if post.media_url %}
+        {% if post.media_type == 'image' %}
+        <img src="{{ url_for('uploaded_file', filename=post.media_url) }}">
+        {% elif post.media_type == 'video' %}
+        <video src="{{ url_for('uploaded_file', filename=post.media_url) }}" controls></video>
+        {% endif %}
+    {% endif %}
+    <div class="post-actions">
+        <button data-action="like" data-type="post" data-id="{{ post.id }}"><i class="fas fa-heart"></i> Like</button>
+        <button data-action="comment" data-id="{{ post.id }}"><i class="fas fa-comment"></i> Comment</button>
+        <button data-action="share"><i class="fas fa-share"></i> Share</button>
+        {% if post.user_id != current_user.id %}
+        <button data-action="follow" data-user-id="{{ post.user_id }}"><i class="fas fa-user-plus"></i> Follow</button>
+        {% endif %}
+        <button data-action="save" data-type="post" data-id="{{ post.id }}"><i class="fas fa-bookmark"></i> Save</button>
+        {% if post.user_id != current_user.id %}
+        <button data-action="repost" data-type="post" data-id="{{ post.id }}"><i class="fas fa-retweet"></i> Repost</button>
+        <button data-action="report" data-type="post" data-id="{{ post.id }}"><i class="fas fa-flag"></i> Report</button>
+        <button data-action="block" data-user-id="{{ post.user_id }}"><i class="fas fa-ban"></i> Block</button>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
