@@ -1,0 +1,4 @@
+<!-- templates/search_groups.html -->
+{% for group in groups %}
+<div><a data-modal-url="/api/group_profile/{{ group.id }}">{{ group.name }}</a></div>
+{% endfor %}
