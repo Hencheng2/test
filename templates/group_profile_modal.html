@@ -1,0 +1,38 @@
+<!-- templates/group_profile_modal.html -->
+<img src="{{ url_for('uploaded_file', filename=group.profile_pic) }}" class="profile-photo" style="display:block; margin:auto;">
+<span>{{ group.name }}</span>
+<span>Members: {{ group.members|length }}</span>
+<button data-modal-url="/api/group_chat/{{ group.id }}">Message</button>
+<button>Add Member</button>
+<p>Group Link: {{ group.link }}</p>
+<p>{{ group.description }}</p>
+{% if is_admin %}
+<div class="group-permissions">
+    <label><input type="checkbox" {% if group.allow_send %}checked{% endif %}> Allow send messages</label>
+    <label><input type="checkbox" {% if group.allow_add %}checked{% endif %}> Add members</label>
+    <label><input type="checkbox" {% if group.approve_members %}checked{% endif %}> Approve new members</label>
+    <label><input type="checkbox" {% if group.allow_edit %}checked{% endif %}> Edit group</label>
+    <button>Save Permissions</button>
+</div>
+{% endif %}
+<div class="members-list">
+    {% for member in members %}
+    <div>
+        <a data-modal-url="/api/profile/{{ member.user.username }}">{{ member.user.username }}</a>
+        {% if is_admin and member.user_id != current_user.id %}
+        <button data-action="remove" data-user-id="{{ member.user_id }}">Remove</button>
+        {% endif %}
+    </div>
+    {% endfor %}
+    <button>Show more</button>
+</div>
+<button data-action="leave">Exit</button>
+<button data-action="report-and-exit">Report and Exit</button>
+<div class="group-nav">
+    <button><i class="fas fa-images"></i> Media</button>
+    <button><i class="fas fa-link"></i> Links</button>
+    <button><i class="fas fa-file"></i> Documents</button>
+</div>
+<div class="gallery">
+    <!-- media -->
+</div>
