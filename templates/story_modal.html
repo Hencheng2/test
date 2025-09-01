@@ -1,0 +1,8 @@
+<!-- templates/story_modal.html -->
+<div class="story-full">
+    {% if story.media_type == 'image' %}
+    <img src="{{ url_for('uploaded_file', filename=story.media_url) }}">
+    {% elif story.media_type == 'video' %}
+    <video id="story-video" src="{{ url_for('uploaded_file', filename=story.media_url) }}" autoplay></video>
+    {% endif %}
+</div>
