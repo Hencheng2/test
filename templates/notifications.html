@@ -1,0 +1,10 @@
+<!-- templates/notifications.html -->
+{% extends "base.html" %}
+{% block content %}
+{% for notif in notifs %}
+<div class="notification-item">
+    <p>{{ notif.content }}</p>
+    <span>{{ notif.timestamp }}</span>
+</div>
+{% endfor %}
+{% endblock %}
