@@ -1,87 +1,15 @@
+<!-- templates/home.html -->
 {% extends "base.html" %}
-
 {% block content %}
-<div class="page-container home-page">
-    <div class="stories-container">
-        {% for story in stories %}
-        <div class="story-circle-wrapper" data-story-id="{{ story.id }}">
-            <img src="{{ url_for('static', filename='uploads/profile_pics/' + story.profile_pic) }}" alt="{{ story.username }}'s story" class="story-circle-img">
-            <p class="story-username">{{ story.username }}</p>
-        </div>
-        {% endfor %}
+<div class="stories-container">
+    {% for story in stories %}
+    <div class="story-circle" data-story-id="{{ story.id }}">
+        <img src="{{ url_for('uploaded_file', filename=story.media_url) }}" alt="{{ story.user.username }}">
+        <p>{{ story.user.username }}</p>
     </div>
-
-    <div class="posts-container">
-        {% for post in posts %}
-        <div class="post-card">
-            <div class="post-header">
-                <div class="post-user-info">
-                    <img src="{{ url_for('static', filename='uploads/profile_pics/' + post.profile_pic) }}" alt="{{ post.username }}'s profile" class="post-profile-pic">
-                    <div class="user-details">
-                        <span class="real-name">{{ post.real_name }}</span>
-                        <span class="username">@{{ post.username }}</span>
-                    </div>
-                </div>
-                <span class="post-date">{{ post.created_at }}</span>
-            </div>
-            <div class="post-content">
-                {% if post.description %}
-                <p class="post-description">{{ post.description }}</p>
-                {% endif %}
-                {% if post.content_type == 'image' %}
-                <img src="{{ url_for('static', filename='uploads/posts/' + post.content_url) }}" alt="Post image" class="post-media">
-                {% elif post.content_type == 'video' %}
-                <video src="{{ url_for('static', filename='uploads/posts/' + post.content_url) }}" controls class="post-media"></video>
-                {% endif %}
-            </div>
-            <div class="post-actions">
-                <i class="fa fa-heart post-action-icon like-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-comment post-action-icon comment-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-share post-action-icon share-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-bookmark post-action-icon save-button" data-post-id="{{ post.id }}"></i>
-                {% if post.user_id != session.user_id %}
-                <i class="fa fa-user-plus post-action-icon follow-button" data-user-id="{{ post.user_id }}"></i>
-                <i class="fa fa-retweet post-action-icon repost-button" data-post-id="{{ post.id }}"></i>
-                {% endif %}
-                <i class="fa fa-eye post-action-icon analytics-button" data-post-id="{{ post.id }}"></i>
-            </div>
-            <div class="post-report-actions">
-                 {% if post.user_id != session.user_id %}
-                <i class="fa fa-flag report-post-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-eye-slash hide-post-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-bell-o turn-on-notifications-button" data-post-id="{{ post.id }}"></i>
-                <i class="fa fa-ban block-profile-button" data-user-id="{{ post.user_id }}"></i>
-                {% endif %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
+    {% endfor %}
 </div>
-
-<div id="storyModal" class="modal">
-    <div class="modal-content story-modal-content">
-        <span class="story-username-modal"></span>
-        <img id="storyImage" src="" alt="Story" class="story-media">
-        <video id="storyVideo" src="" controls class="story-media" style="display:none;"></video>
-        <div class="story-nav">
-            <span class="nav-arrow left-arrow">&#10094;</span>
-            <span class="nav-arrow right-arrow">&#10095;</span>
-        </div>
-        <span class="exit-story-btn">
-            <i class="fa fa-times"></i>
-        </span>
-    </div>
+<div id="posts-container">
+    {% include 'post_snippet.html' %}
 </div>
-
-<div id="postModal" class="modal">
-    <div class="modal-content post-modal-content">
-        <span class="close-modal-btn">&times;</span>
-        <div id="modal-details">
-            </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}
