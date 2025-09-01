@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="reels-page-container">
+    <div class="reels-list" id="reels-list">
+        <div class="reel-item" data-reel-id="reel1">
+            <video class="reel-video" src="{{ url_for('static', filename='videos/reel_1.mp4') }}" loop muted></video>
+            <div class="reel-overlay">
+                <div class="reel-info">
+                    <span class="reel-username">@user_name</span>
+                    <span class="reel-description">A short description of the reel can go here[cite: 12].</span>
+                </div>
+                <div class="reel-actions-vertical">
+                    <button class="action-btn follow-btn"><i class="fas fa-user-plus"></i></button>
+                    <button class="action-btn like-btn"><i class="fas fa-heart"></i></button>
+                    <button class="action-btn repost-btn"><i class="fas fa-retweet"></i></button>
+                    <button class="action-btn comment-btn"><i class="fas fa-comment"></i></button>
+                    <button class="action-btn share-btn"><i class="fas fa-share-alt"></i></button>
+                    <button class="action-btn save-btn"><i class="fas fa-bookmark"></i></button>
+                    <button class="action-btn download-btn"><i class="fas fa-download"></i></button>
+                </div>
+            </div>
+        </div>
+        </div>
+</div>
+{% endblock %}
