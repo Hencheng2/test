@@ -1,0 +1,10 @@
+<!-- templates/create_group_modal.html -->
+<form action="/api/create_group" method="post" enctype="multipart/form-data">
+    <input type="file" name="profile_pic">
+    <input type="text" name="name" placeholder="Group Name">
+    <label><input type="checkbox" name="allow_edit"> Allow editing by members</label>
+    <label><input type="checkbox" name="allow_send" checked> Allow sending messages by members</label>
+    <label><input type="checkbox" name="allow_add" checked> Allow adding members by members</label>
+    <button type="submit">Create</button>
+    <button type="button" class="cancel">Cancel</button>
+</form>
