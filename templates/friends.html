@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="friends-page-container">
+    <div class="friends-header">
+        <div class="search-bar-container">
+            <i class="fas fa-search"></i>
+            <input type="text" id="friends-search" placeholder="Search users...">
+        </div>
+        <div class="friends-nav-bar">
+            <button class="friends-nav-btn active" data-section="followers">Followers (<span id="followers-count">0</span>)</button>
+            <button class="friends-nav-btn" data-section="following">Following (<span id="following-count">0</span>)</button>
+            <button class="friends-nav-btn" data-section="friends">Friends (<span id="friends-count">0</span>)</button>
+            <button class="friends-nav-btn" data-section="requests">Requests (<span id="requests-count">0</span>)</button>
+            <button class="friends-nav-btn" data-section="suggested">Suggested</button>
+        </div>
+    </div>
+    
+    <div id="friends-list-container" class="friends-list-container">
+        <div id="followers-section" class="friends-section active">
+            <div class="user-list-item">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_2.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Jane Smith</span>
+                        <span class="mutual-info">5 mutual friends/followers</span>
+                    </div>
+                </div>
+                <div class="user-actions">
+                    <button class="action-btn message-btn"><i class="fas fa-comment"></i></button>
+                    <button class="action-btn block-btn"><i class="fas fa-user-slash"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="following-section" class="friends-section">
+            <div class="user-list-item">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_3.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Michael Scott</span>
+                        <span class="mutual-info">3 mutual friends/followers</span>
+                    </div>
+                </div>
+                <div class="user-actions">
+                    <button class="action-btn message-btn"><i class="fas fa-comment"></i></button>
+                    <div class="dropdown">
+                        <button class="action-btn dropdown-btn"><i class="fas fa-ellipsis-v"></i></button>
+                        <div class="dropdown-content">
+                            <a href="#" class="unfollow-btn">Unfollow</a>
+                            <a href="#" class="block-btn">Block</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="friends-section" class="friends-section">
+            <div class="user-list-item">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_4.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Maria Garcia</span>
+                        <span class="mutual-info">10 mutual friends/followers</span>
+                    </div>
+                </div>
+                <div class="user-actions">
+                    <button class="action-btn message-btn"><i class="fas fa-comment"></i></button>
+                    <div class="dropdown">
+                        <button class="action-btn dropdown-btn"><i class="fas fa-ellipsis-v"></i></button>
+                        <div class="dropdown-content">
+                            <a href="#" class="unfollow-btn">Unfollow</a>
+                            <a href="#" class="block-btn">Block</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="requests-section" class="friends-section">
+            <div class="user-list-item">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_5.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">David Chen</span>
+                        <span class="mutual-info">1 mutual friend/follower</span>
+                    </div>
+                </div>
+                <div class="user-actions">
+                    <button class="action-btn accept-btn">Accept</button>
+                    <button class="action-btn decline-btn">Decline</button>
+                    <button class="action-btn block-btn">Block</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="suggested-section" class="friends-section">
+            <div class="user-list-item">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_6.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Emily White</span>
+                        <span class="mutual-info">2 mutual friends/followers</span>
+                    </div>
+                </div>
+                <div class="user-actions">
+                    <button class="action-btn follow-btn">Follow</button>
+                    <button class="action-btn remove-btn">Remove</button>
+                    <button class="action-btn block-btn">Block</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
