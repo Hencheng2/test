@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="inbox-page-container">
+    <div class="inbox-nav-bar-container">
+        <div class="inbox-nav-bar">
+            <button class="inbox-nav-btn active" data-section="chats">Chats (<span id="chats-count">0</span>)</button>
+            <button class="inbox-nav-btn" data-section="groups">Groups (<span id="groups-count">0</span>)</button>
+            <button class="inbox-nav-btn" data-section="new-chat"><i class="fas fa-plus"></i></button>
+        </div>
+    </div>
+
+    <div id="inbox-list-container" class="inbox-list-container">
+        <div id="chats-section" class="inbox-section active">
+            <div class="chat-list-item" data-user-id="user123">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_2.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Jane Smith</span>
+                        <span class="message-preview">You: Sounds great! Let's do it.</span>
+                    </div>
+                </div>
+                <div class="chat-status">
+                    <span class="message-time">10:30 AM</span>
+                    <span class="unread-count">3</span>
+                </div>
+            </div>
+            <div class="chat-list-item" data-user-id="user456">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/user_pic_3.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Michael Scott</span>
+                        <span class="message-preview">Got it, thanks!</span>
+                    </div>
+                </div>
+                <div class="chat-status">
+                    <span class="message-time">Yesterday</span>
+                    <span class="unread-count"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="groups-section" class="inbox-section">
+            <div class="chat-list-item" data-group-id="group789">
+                <div class="user-info">
+                    <img src="{{ url_for('static', filename='images/group_pic_1.jpg') }}" alt="Group profile pic" class="profile-pic-small">
+                    <div class="details">
+                        <span class="real-name">Project Phoenix Team</span>
+                        <span class="message-preview">Michael: The report is due Friday.</span>
+                    </div>
+                </div>
+                <div class="chat-status">
+                    <span class="message-time">9:00 AM</span>
+                    <span class="unread-count">5</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="new-chat-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button class="modal-back-btn" onclick="closeNewChatModal()"><i class="fas fa-arrow-left"></i></button>
+            <h2>New Chat</h2>
+        </div>
+        <div class="modal-body">
+            <div class="search-bar-container">
+                <i class="fas fa-search"></i>
+                <input type="text" id="new-chat-search" placeholder="Search friends or groups...">
+            </div>
+            <button id="create-group-btn" class="create-group-btn">Create Group</button>
+            
+            <div class="chat-options-list">
+                <h3>Friends</h3>
+                <div class="new-chat-list-item">
+                    <img src="{{ url_for('static', filename='images/user_pic_4.jpg') }}" alt="User profile pic" class="profile-pic-small">
+                    <span class="real-name">Maria Garcia</span>
+                </div>
+            </div>
+            
+            <div class="chat-options-list">
+                <h3>Groups</h3>
+                <div class="new-chat-list-item">
+                    <img src="{{ url_for('static', filename='images/group_pic_2.jpg') }}" alt="Group profile pic" class="profile-pic-small">
+                    <span class="real-name">Marketing Dept.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
