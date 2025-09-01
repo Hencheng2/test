@@ -4,82 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SociaFam</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
 </head>
 <body>
-    <div class="main-container">
+    <div class="main-content">
         {% block content %}{% endblock %}
     </div>
 
-    <nav class="nav-bar">
-        <ul class="nav-list">
-            <li class="nav-item">
-                <a href="{{ url_for('home') }}" class="nav-link">
-                    <i class="fas fa-home fa-2x"></i>
-                    <span class="nav-text">Home</span>
+    <nav class="navbar">
+        <ul>
+            <li>
+                <a href="{{ url_for('home') }}" class="nav-button">
+                    <i class="fa fa-home"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('reels') }}" class="nav-link">
-                    <i class="fas fa-video fa-2x"></i>
-                    <span class="nav-text">Reels</span>
+            <li>
+                <a href="{{ url_for('reels') }}" class="nav-button">
+                    <i class="fa fa-film"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('friends') }}" class="nav-link">
-                    <i class="fas fa-users fa-2x"></i>
-                    <span class="nav-text">Friends</span>
+            <li>
+                <a href="{{ url_for('friends') }}" class="nav-button">
+                    <i class="fa fa-user-plus"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('inbox') }}" class="nav-link">
-                    <i class="fas fa-inbox fa-2x"></i>
-                    <span class="nav-text">Inbox</span>
+            <li>
+                <a href="{{ url_for('inbox') }}" class="nav-button">
+                    <i class="fa fa-inbox"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('profile') }}" class="nav-link">
-                    <i class="fas fa-user-circle fa-2x"></i>
-                    <span class="nav-text">Profile</span>
+            <li>
+                <a href="{{ url_for('profile') }}" class="nav-button">
+                    <i class="fa fa-user-circle"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('search') }}" class="nav-link">
-                    <i class="fas fa-search fa-2x"></i>
-                    <span class="nav-text">Search</span>
+            <li>
+                <a href="{{ url_for('search') }}" class="nav-button">
+                    <i class="fa fa-search"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('add_to') }}" class="nav-link">
-                    <i class="fas fa-plus-circle fa-2x"></i>
-                    <span class="nav-text">Add to</span>
+            <li>
+                <a href="{{ url_for('add_to') }}" class="nav-button">
+                    <i class="fa fa-plus-square"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('notifications') }}" class="nav-link">
-                    <i class="fas fa-bell fa-2x"></i>
-                    <span class="nav-text">Notifications</span>
+            <li>
+                <a href="{{ url_for('notifications') }}" class="nav-button">
+                    <i class="fa fa-bell"></i>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ url_for('menu') }}" class="nav-link">
-                    <i class="fas fa-bars fa-2x"></i>
-                    <span class="nav-text">Menu</span>
+            <li>
+                <a href="{{ url_for('menu') }}" class="nav-button">
+                    <i class="fa fa-bars"></i>
                 </a>
             </li>
-            {% if is_admin %}
-            <li class="nav-item">
-                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">
-                    <i class="fas fa-user-shield fa-2x"></i>
-                    <span class="nav-text">Admin</span>
+            {% if session.get('is_admin') %}
+            <li>
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-button">
+                    <i class="fa fa-cogs"></i>
                 </a>
             </li>
             {% endif %}
         </ul>
     </nav>
-
-    {% include 'modals.html' %}
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>
