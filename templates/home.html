@@ -1,87 +1,87 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="home-page-container">
+<div class="page-container home-page">
     <div class="stories-container">
-        <div class="stories-wrapper" id="stories-wrapper">
-            <div class="story-circle-container add-story-btn">
-                <i class="fas fa-plus-circle fa-2x"></i>
-                <span>Your Story</span>
-            </div>
-            <div class="story-circle-container story-item" data-story-id="123">
-                <div class="story-circle">
-                    <img src="{{ url_for('static', filename='images/story_1.jpg') }}" alt="User's story">
-                </div>
-                <span>user123</span>
-            </div>
-            <div class="story-circle-container story-item" data-story-id="456">
-                <div class="story-circle">
-                    <img src="{{ url_for('static', filename='images/story_2.jpg') }}" alt="User's story">
-                </div>
-                <span>friend_name</span>
-            </div>
+        {% for story in stories %}
+        <div class="story-circle-wrapper" data-story-id="{{ story.id }}">
+            <img src="{{ url_for('static', filename='uploads/profile_pics/' + story.profile_pic) }}" alt="{{ story.username }}'s story" class="story-circle-img">
+            <p class="story-username">{{ story.username }}</p>
         </div>
+        {% endfor %}
     </div>
-    
+
     <div class="posts-container">
+        {% for post in posts %}
         <div class="post-card">
             <div class="post-header">
-                <div class="post-header-left">
-                    <div class="profile-pic-small">
-                        <img src="{{ url_for('static', filename='images/user_pic_1.jpg') }}" alt="User profile pic">
-                    </div>
-                    <div class="user-info">
-                        <span class="user-real-name">John Doe</span>
-                        <span class="user-username">@johndoe</span>
-                        <span class="post-date">2d</span>
+                <div class="post-user-info">
+                    <img src="{{ url_for('static', filename='uploads/profile_pics/' + post.profile_pic) }}" alt="{{ post.username }}'s profile" class="post-profile-pic">
+                    <div class="user-details">
+                        <span class="real-name">{{ post.real_name }}</span>
+                        <span class="username">@{{ post.username }}</span>
                     </div>
                 </div>
-                <div class="post-options">
-                    <i class="fas fa-ellipsis-h"></i>
-                    <ul class="post-options-menu">
-                        <li><a href="#" class="report-post-btn">Report Post</a></li>
-                        <li><a href="#" class="hide-post-btn">Hide Post</a></li>
-                        <li><a href="#" class="turn-on-notifications-btn">Turn on notifications</a></li>
-                        <li><a href="#" class="block-profile-btn">Block Profile</a></li>
-                    </ul>
-                </div>
+                <span class="post-date">{{ post.created_at }}</span>
             </div>
             <div class="post-content">
-                <p class="post-description">Enjoying the beautiful day! #nature #outdoors</p>
-                <img src="{{ url_for('static', filename='images/post_1.jpg') }}" alt="Post image">
+                {% if post.description %}
+                <p class="post-description">{{ post.description }}</p>
+                {% endif %}
+                {% if post.content_type == 'image' %}
+                <img src="{{ url_for('static', filename='uploads/posts/' + post.content_url) }}" alt="Post image" class="post-media">
+                {% elif post.content_type == 'video' %}
+                <video src="{{ url_for('static', filename='uploads/posts/' + post.content_url) }}" controls class="post-media"></video>
+                {% endif %}
             </div>
             <div class="post-actions">
-                <div class="post-actions-left">
-                    <button class="action-btn like-btn"><i class="fas fa-heart"></i></button>
-                    <button class="action-btn comment-btn"><i class="fas fa-comment"></i></button>
-                    <button class="action-btn share-btn"><i class="fas fa-share-alt"></i></button>
-                    <button class="action-btn repost-btn"><i class="fas fa-retweet"></i></button>
-                    <button class="action-btn follow-btn"><i class="fas fa-user-plus"></i></button>
-                </div>
-                <div class="post-actions-right">
-                    <button class="action-btn save-btn"><i class="fas fa-bookmark"></i></button>
-                </div>
+                <i class="fa fa-heart post-action-icon like-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-comment post-action-icon comment-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-share post-action-icon share-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-bookmark post-action-icon save-button" data-post-id="{{ post.id }}"></i>
+                {% if post.user_id != session.user_id %}
+                <i class="fa fa-user-plus post-action-icon follow-button" data-user-id="{{ post.user_id }}"></i>
+                <i class="fa fa-retweet post-action-icon repost-button" data-post-id="{{ post.id }}"></i>
+                {% endif %}
+                <i class="fa fa-eye post-action-icon analytics-button" data-post-id="{{ post.id }}"></i>
             </div>
-            <div class="post-analytics">
-                <span>1,234 views</span>
+            <div class="post-report-actions">
+                 {% if post.user_id != session.user_id %}
+                <i class="fa fa-flag report-post-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-eye-slash hide-post-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-bell-o turn-on-notifications-button" data-post-id="{{ post.id }}"></i>
+                <i class="fa fa-ban block-profile-button" data-user-id="{{ post.user_id }}"></i>
+                {% endif %}
             </div>
         </div>
-        </div>
-</div>
-
-<div id="story-modal" class="modal">
-    <div class="modal-content-story">
-        <div class="story-header">
-            <div class="profile-pic-small">
-                <img id="story-owner-pic" src="" alt="Story owner profile pic">
-            </div>
-            <span id="story-owner-username"></span>
-        </div>
-        <div class="story-display">
-            <img id="story-media" src="" alt="Story media">
-            </div>
-        <button class="modal-close-btn" onclick="closeStoryModal()"><i class="fas fa-times"></i></button>
+        {% endfor %}
     </div>
 </div>
 
+<div id="storyModal" class="modal">
+    <div class="modal-content story-modal-content">
+        <span class="story-username-modal"></span>
+        <img id="storyImage" src="" alt="Story" class="story-media">
+        <video id="storyVideo" src="" controls class="story-media" style="display:none;"></video>
+        <div class="story-nav">
+            <span class="nav-arrow left-arrow">&#10094;</span>
+            <span class="nav-arrow right-arrow">&#10095;</span>
+        </div>
+        <span class="exit-story-btn">
+            <i class="fa fa-times"></i>
+        </span>
+    </div>
+</div>
+
+<div id="postModal" class="modal">
+    <div class="modal-content post-modal-content">
+        <span class="close-modal-btn">&times;</span>
+        <div id="modal-details">
+            </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}
