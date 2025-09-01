@@ -1,0 +1,30 @@
+<!-- templates/user_list.html -->
+{% for user in users %}
+<div class="user-list-item">
+    <img src="{{ url_for('uploaded_file', filename=user.profile_pic) }}">
+    <span>{{ user.real_name or user.username }}</span>
+    <span>Mutual: <!-- calculate --></span>
+    {% if type == 'followers' %}
+    <button><i class="fas fa-comment"></i> Message</button>
+    <button data-action="block" data-user-id="{{ user.id }}"><i class="fas fa-ban"></i> Block</button>
+    {% elif type == 'following' or type == 'friends' %}
+    <button><i class="fas fa-comment"></i> Message</button>
+    <div class="dropdown">
+        <button><i class="fas fa-ellipsis-v"></i></button>
+        <div class="dropdown-content">
+            <a data-action="unfollow" data-user-id="{{ user.id }}">Unfollow</a>
+            <a data-action="block" data-user-id="{{ user.id }}">Block</a>
+        </div>
+    </div>
+    {% elif type == 'requests' %}
+    <button data-action="accept" data-user-id="{{ user.id }}">Accept</button>
+    <button data-action="decline" data-user-id="{{ user.id }}">Decline</button>
+    <button data-action="block" data-user-id="{{ user.id }}">Block</button>
+    {% elif type == 'suggested' %}
+    <button data-action="follow" data-user-id="{{ user.id }}">Follow</button>
+    <button>Remove</button>
+    <button data-action="block" data-user-id="{{ user.id }}">Block</button>
+    {% endif %}
+    <a data-modal-url="/api/profile/{{ user.username }}">View Profile</a>
+</div>
+{% endfor %}
