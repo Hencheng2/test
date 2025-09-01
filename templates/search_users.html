@@ -1,0 +1,4 @@
+<!-- templates/search_users.html -->
+{% for user in users %}
+<div><a data-modal-url="/api/profile/{{ user.username }}">{{ user.username }}</a></div>
+{% endfor %}
