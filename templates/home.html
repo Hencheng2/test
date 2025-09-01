@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="home-page-container">
+    <div class="stories-container">
+        <div class="stories-wrapper" id="stories-wrapper">
+            <div class="story-circle-container add-story-btn">
+                <i class="fas fa-plus-circle fa-2x"></i>
+                <span>Your Story</span>
+            </div>
+            <div class="story-circle-container story-item" data-story-id="123">
+                <div class="story-circle">
+                    <img src="{{ url_for('static', filename='images/story_1.jpg') }}" alt="User's story">
+                </div>
+                <span>user123</span>
+            </div>
+            <div class="story-circle-container story-item" data-story-id="456">
+                <div class="story-circle">
+                    <img src="{{ url_for('static', filename='images/story_2.jpg') }}" alt="User's story">
+                </div>
+                <span>friend_name</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="posts-container">
+        <div class="post-card">
+            <div class="post-header">
+                <div class="post-header-left">
+                    <div class="profile-pic-small">
+                        <img src="{{ url_for('static', filename='images/user_pic_1.jpg') }}" alt="User profile pic">
+                    </div>
+                    <div class="user-info">
+                        <span class="user-real-name">John Doe</span>
+                        <span class="user-username">@johndoe</span>
+                        <span class="post-date">2d</span>
+                    </div>
+                </div>
+                <div class="post-options">
+                    <i class="fas fa-ellipsis-h"></i>
+                    <ul class="post-options-menu">
+                        <li><a href="#" class="report-post-btn">Report Post</a></li>
+                        <li><a href="#" class="hide-post-btn">Hide Post</a></li>
+                        <li><a href="#" class="turn-on-notifications-btn">Turn on notifications</a></li>
+                        <li><a href="#" class="block-profile-btn">Block Profile</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="post-content">
+                <p class="post-description">Enjoying the beautiful day! #nature #outdoors</p>
+                <img src="{{ url_for('static', filename='images/post_1.jpg') }}" alt="Post image">
+            </div>
+            <div class="post-actions">
+                <div class="post-actions-left">
+                    <button class="action-btn like-btn"><i class="fas fa-heart"></i></button>
+                    <button class="action-btn comment-btn"><i class="fas fa-comment"></i></button>
+                    <button class="action-btn share-btn"><i class="fas fa-share-alt"></i></button>
+                    <button class="action-btn repost-btn"><i class="fas fa-retweet"></i></button>
+                    <button class="action-btn follow-btn"><i class="fas fa-user-plus"></i></button>
+                </div>
+                <div class="post-actions-right">
+                    <button class="action-btn save-btn"><i class="fas fa-bookmark"></i></button>
+                </div>
+            </div>
+            <div class="post-analytics">
+                <span>1,234 views</span>
+            </div>
+        </div>
+        </div>
+</div>
+
+<div id="story-modal" class="modal">
+    <div class="modal-content-story">
+        <div class="story-header">
+            <div class="profile-pic-small">
+                <img id="story-owner-pic" src="" alt="Story owner profile pic">
+            </div>
+            <span id="story-owner-username"></span>
+        </div>
+        <div class="story-display">
+            <img id="story-media" src="" alt="Story media">
+            </div>
+        <button class="modal-close-btn" onclick="closeStoryModal()"><i class="fas fa-times"></i></button>
+    </div>
+</div>
+
+{% endblock %}
