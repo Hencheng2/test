@@ -1,16 +1,15 @@
-<!-- templates/index.html (Updated) -->
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SociaFam</title>
-    <link rel="stylesheet" href="/static/style.css" onerror="console.error('Failed to load CSS')">
+    <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 </head>
 <body>
     <div id="content"><p>Loading...</p></div>
+
     <div class="nav-bar">
         <button id="homeBtn" class="nav-button"><i class="fa fa-home"></i></button>
         <button id="reelsBtn" class="nav-button"><i class="fa fa-video"></i></button>
@@ -24,52 +23,46 @@
         <button id="adminBtn" class="nav-button" style="display:none;"><i class="fa fa-shield-alt"></i></button>
     </div>
 
-    <!-- Login Modal -->
     <div id="loginModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('loginModal')">&times;</span>
-            <h2>Login</h2>
-            <input id="loginIdentifier" placeholder="Username or Email">
-            <input id="loginPassword" type="password" placeholder="Password">
+            <h2>SociaFam</h2>
+            <input type="text" id="loginIdentifier" placeholder="Username or Email">
+            <input type="password" id="loginPassword" placeholder="Password">
             <button onclick="login()">Login</button>
-            <p><a onclick="showModal('registerModal'); hideModal('loginModal')">Register</a></p>
-            <p><a onclick="showModal('forgotModal'); hideModal('loginModal')">Forgot Password</a></p>
+            <p onclick="showModal('registerModal')">Create an account</p>
+            <p onclick="showModal('forgotModal')">Forgot password?</p>
         </div>
     </div>
 
-    <!-- Register Modal -->
     <div id="registerModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('registerModal')">&times;</span>
             <h2>Register</h2>
-            <input id="regUsername" placeholder="Username">
-            <input id="regPassword" type="password" placeholder="Password">
+            <input type="text" id="registerUsername" placeholder="Username">
+            <input type="password" id="registerPassword" placeholder="Password">
             <button onclick="register()">Register</button>
         </div>
     </div>
 
-    <!-- Forgot Password Modal -->
     <div id="forgotModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('forgotModal')">&times;</span>
             <h2>Forgot Password</h2>
-            <input id="forgotUsername" placeholder="Username">
-            <input id="forgotKey" placeholder="Unique Key">
-            <button onclick="forgot()">Submit</button>
+            <input type="text" id="forgotUsername" placeholder="Username">
+            <input type="text" id="forgotUniqueKey" placeholder="Unique Key">
+            <button onclick="verifyKey()">Verify</button>
         </div>
     </div>
 
-    <!-- Reset Password Modal -->
     <div id="resetModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('resetModal')">&times;</span>
             <h2>Reset Password</h2>
-            <input id="newPassword" type="password" placeholder="New Password">
+            <input type="password" id="resetPassword" placeholder="New Password">
             <button onclick="resetPassword()">Reset</button>
         </div>
     </div>
 
-    <!-- Add To Modal -->
     <div id="addModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('addModal')">&times;</span>
@@ -81,33 +74,54 @@
             </select>
             <input type="file" id="addMedia" accept="image/*,video/*,audio/*">
             <textarea id="addDescription" placeholder="Description"></textarea>
+            <select id="addPrivacy">
+                <option value="all">All</option>
+                <option value="friends">Friends Only</option>
+            </select>
             <button onclick="createPost()">Post</button>
         </div>
     </div>
 
-    <!-- Profile Modal -->
+    <div id="storyModal" class="modal" style="background-color: black;">
+        <div class="story-view" id="storyView"></div>
+    </div>
+    
     <div id="profileModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('profileModal')">&times;</span>
             <div id="profileContent"></div>
         </div>
     </div>
 
-    <!-- Chat Modal -->
-    <div id="chatModal" class="modal">
+    <div id="editProfileModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('chatModal')">&times;</span>
-            <div id="chatContent"></div>
-            <input id="chatInput" placeholder="Type message">
-            <button onclick="sendChat()">Send</button>
+            <span class="close" onclick="hideModal('editProfileModal')">&times;</span>
+            <h2>Edit Profile</h2>
+            <div id="editProfileContent"></div>
         </div>
     </div>
 
-    <!-- Story Modal -->
-    <div id="storyModal" class="modal" style="background-color: black;">
-        <div class="story-view" id="storyView"></div>
+    <div id="chatModal" class="modal">
+        <div class="modal-content chat-modal-content">
+            <div id="chatHeader" class="chat-header"></div>
+            <div id="chatContent" class="chat-content"></div>
+            <div class="chat-input-area">
+                <input id="chatInput" placeholder="Type message">
+                <button id="chatSendBtn">Send</button>
+            </div>
+        </div>
     </div>
 
-    <script src="/static/script.js" onerror="console.error('Failed to load JS')"></script>
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('createGroupModal')">&times;</span>
+            <h2>Create Group</h2>
+            <input type="text" id="groupName" placeholder="Group Name">
+            <textarea id="groupDescription" placeholder="Group Description"></textarea>
+            <input type="file" id="groupProfilePic" accept="image/*">
+            <button onclick="createGroup()">Create</button>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
 </body>
 </html>
