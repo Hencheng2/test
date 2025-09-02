@@ -1,5 +1,3 @@
-// static/script.js (fully adjusted for frontend functionality)
-
 const apiBase = '/api';
 
 function showModal(id) {
@@ -14,7 +12,7 @@ function hideModal(id) {
 
 let currentPage = 1;
 let loading = false;
-let currentView = 'home';
+let currentView = 'login';
 let currentStoryIndex = 0;
 let stories = [];
 
@@ -53,17 +51,26 @@ function checkLoggedIn() {
     .then(res => {
         if (res.status === 401) {
             showModal('loginModal');
+            document.getElementById('navBar').style.display = 'none';
+            document.getElementById('content').style.display = 'none';
         } else {
             res.json().then(user => {
                 sessionStorage.setItem('user_id', user.id);
                 sessionStorage.setItem('is_admin', user.is_admin);
+                document.getElementById('navBar').style.display = 'flex';
+                document.getElementById('content').style.display = 'block';
                 if (user.is_admin) document.getElementById('adminBtn').style.display = 'block';
                 applyTheme(user.theme);
+                hideModal('loginModal');
                 loadView('home');
             });
         }
     })
-    .catch(() => showModal('loginModal'));
+    .catch(() => {
+        showModal('loginModal');
+        document.getElementById('navBar').style.display = 'none';
+        document.getElementById('content').style.display = 'none';
+    });
 }
 
 function applyTheme(theme) {
@@ -209,12 +216,10 @@ function togglePlayPause(e) {
 }
 
 function downloadReel(url) {
-    // Placeholder for download with watermark
     const a = document.createElement('a');
     a.href = url;
     a.download = 'reel.mp4';
     a.click();
-    // For watermark, would need canvas or server-side
 }
 
 function showStory(index) {
@@ -286,7 +291,7 @@ function loadFriends() {
         </div>
         <div id="friendsList"></div>
     `;
-    loadFollowers();  // Default
+    loadFollowers();
 }
 
 function loadFollowers() {
@@ -387,12 +392,10 @@ function declineRequest(id) {
 }
 
 function removeSuggested(id) {
-    // Client-side remove for now
     alert('Removed from suggested');
 }
 
 function showDropdown(id, type) {
-    // Placeholder for dropdown: unfollow, block
     if (confirm('Unfollow?')) unfollowUser(id);
     else if (confirm('Block?')) blockUser(id);
 }
@@ -415,7 +418,7 @@ function loadInbox() {
         </div>
         <div id="inboxList"></div>
     `;
-    loadChats();  // Default
+    loadChats();
 }
 
 function loadChats() {
@@ -468,14 +471,12 @@ function showChatModal(chat_id, is_group) {
         });
         chatMessages.scrollTop = chatMessages.scrollHeight;
     });
-    // Load header: back, profile, dropdown
     chatHeader.innerHTML = `
         <button onclick="hideModal('chatModal')"><i class="fa fa-arrow-left"></i></button>
         <img src="profile_pic" class="small-circle">
         <span>Name</span>
         <button onclick="showChatDropdown(${chat_id}, ${is_group})"><i class="fa fa-ellipsis-v"></i></button>
     `;
-    // Fetch name/pic
     if (!is_group) {
         fetch(`${apiBase}/user/${chat_id}`, { credentials: 'include' })
         .then(res => res.json())
@@ -491,7 +492,6 @@ function showChatModal(chat_id, is_group) {
             chatHeader.querySelector('span').textContent = group.name;
         });
     }
-    // Load custom: nickname, wallpaper
     fetch(`${apiBase}/chat/custom?chat_id=${chat_id}&is_group=${is_group}`, { credentials: 'include' })
     .then(res => res.json())
     .then(custom => {
@@ -504,7 +504,6 @@ function showChatModal(chat_id, is_group) {
 }
 
 function showChatDropdown(chat_id, is_group) {
-    // Dropdown: customize name, change wallpaper, search, view user/group, disappearing, block, report
     showModal('chatDropdownModal');
     const dropdownContent = document.getElementById('chatDropdownContent');
     dropdownContent.innerHTML = `
@@ -531,7 +530,6 @@ function customizeName(chat_id, is_group) {
 }
 
 function changeWallpaper(chat_id, is_group) {
-    // Placeholder: upload and set
     const url = prompt('Wallpaper URL:');
     if (url) {
         fetch(`${apiBase}/chat/customize`, {
@@ -549,7 +547,6 @@ function searchChat(chat_id, is_group) {
         fetch(`${apiBase}/chat/search?chat_id=${chat_id}&query=${query}&is_group=${is_group}`, { credentials: 'include' })
         .then(res => res.json())
         .then(messages => {
-            // Display in modal or something
             alert('Found ' + messages.length + ' messages');
         });
     }
@@ -563,7 +560,6 @@ function viewProfile(chat_id, is_group) {
 function toggleDisappearing(chat_id, is_group) {
     const after = prompt('Disappearing after (off, 24h, 1w, 1m):');
     if (after) {
-        // Set for future messages, existing handled in backend
         alert('Set to ' + after);
     }
 }
@@ -578,9 +574,9 @@ function blockChat(chat_id, is_group) {
 function reportChat(chat_id, is_group) {
     const reason = prompt('Reason:');
     if (reason) {
-        fetch(`${apiBase}/post/report`, {  // Reuse report for chat
+        fetch(`${apiBase}/post/report`, {
             method: 'POST',
-            body: JSON.stringify({ post_id: chat_id, reason }),  // Misuse post_id for chat_id
+            body: JSON.stringify({ post_id: chat_id, reason }),
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include'
         }).then(() => alert('Reported'));
@@ -623,7 +619,7 @@ function loadProfile(userId) {
             ${userId != sessionStorage.getItem('user_id') ? `<button onclick="blockUser(${userId})">Block</button>` : ''}
             <div id="profileContent"></div>
         `;
-        loadUserPosts(userId);  // Default
+        loadUserPosts(userId);
         if (userId == sessionStorage.getItem('user_id')) fillProfileEdit(user);
     });
 }
@@ -631,14 +627,12 @@ function loadProfile(userId) {
 function fillProfileEdit(user) {
     document.getElementById('editRealName').value = user.real_name || '';
     document.getElementById('editBio').value = user.bio || '';
-    // Fill other fields
 }
 
 function updateProfile() {
     const data = {
         real_name: document.getElementById('editRealName').value,
         bio: document.getElementById('editBio').value,
-        // Add other fields
     };
     fetch(`${apiBase}/user/update`, {
         method: 'POST',
@@ -666,23 +660,18 @@ function changePassword() {
 }
 
 function loadUserPosts(userId) {
-    // Fetch posts for user, render similar to feed
-    // Placeholder
     document.getElementById('profileContent').innerHTML = 'Posts...';
 }
 
 function loadUserReels(userId) {
-    // Similar
     document.getElementById('profileContent').innerHTML = 'Reels...';
 }
 
 function loadUserStories(userId) {
-    // Similar
     document.getElementById('profileContent').innerHTML = 'Stories...';
 }
 
 function loadSavedPosts() {
-    // Fetch saves
     document.getElementById('profileContent').innerHTML = 'Saved...';
 }
 
@@ -740,7 +729,11 @@ function loadMenu() {
 
 function logout() {
     fetch(`${apiBase}/logout`, { method: 'POST', credentials: 'include' })
-    .then(() => location.reload());
+    .then(() => {
+        document.getElementById('navBar').style.display = 'none';
+        document.getElementById('content').style.display = 'none';
+        showModal('loginModal');
+    });
 }
 
 function loadAdmin() {
@@ -755,7 +748,7 @@ function loadAdmin() {
         </div>
         <div id="adminContent"></div>
     `;
-    loadAdminUsers();  // Default
+    loadAdminUsers();
 }
 
 function loadAdminUsers() {
@@ -765,298 +758,4 @@ function loadAdminUsers() {
         const adminContent = document.getElementById('adminContent');
         adminContent.innerHTML = '';
         users.forEach(user => {
-            const item = document.createElement('div');
-            item.innerHTML = `
-                ${user.username} - ${user.real_name}
-                <button onclick="deleteUser(${user.id})">Delete</button>
-                <button onclick="banUser(${user.id})">Ban</button>
-                <button onclick="warnUser(${user.id})">Warn</button>
-            `;
-            adminContent.appendChild(item);
-        });
-    });
-}
-
-function deleteUser(id) {
-    if (confirm('Delete?')) {
-        fetch(`${apiBase}/admin/user/delete`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => loadAdminUsers());
-    }
-}
-
-function banUser(id) {
-    const duration = prompt('Duration (days or forever):');
-    if (duration) {
-        fetch(`${apiBase}/admin/user/ban`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id, duration }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Banned'));
-    }
-}
-
-function warnUser(id) {
-    const message = prompt('Warning message:');
-    if (message) {
-        fetch(`${apiBase}/admin/warning`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id, message }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Sent'));
-    }
-}
-
-function loadAdminGroups() {
-    // Similar to users
-    document.getElementById('adminContent').innerHTML = 'Groups...';
-}
-
-function loadAdminReports() {
-    // Similar
-    document.getElementById('adminContent').innerHTML = 'Reports...';
-}
-
-function loadAdminInbox() {
-    // Similar to inbox
-    document.getElementById('adminContent').innerHTML = 'Admin Inbox...';
-}
-
-function login() {
-    const identifier = document.getElementById('loginIdentifier').value;
-    const password = document.getElementById('loginPassword').value;
-    fetch(`${apiBase}/login`, {
-        method: 'POST',
-        body: JSON.stringify({ identifier, password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('loginModal');
-            checkLoggedIn();
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function register() {
-    const username = document.getElementById('regUsername').value;
-    const password = document.getElementById('regPassword').value;
-    fetch(`${apiBase}/register`, {
-        method: 'POST',
-        body: JSON.stringify({ username, password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) res.json().then(data => {
-            alert('Registered! Key: ' + data.unique_key);
-            hideModal('registerModal');
-            checkLoggedIn();
-        });
-        else res.json().then(data => alert(data.error));
-    });
-}
-
-function forgot() {
-    const username = document.getElementById('forgotUsername').value;
-    const unique_key = document.getElementById('forgotKey').value;
-    fetch(`${apiBase}/forgot`, {
-        method: 'POST',
-        body: JSON.stringify({ username, unique_key }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('forgotModal');
-            setTimeout(() => showModal('resetModal'), 5000);
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function resetPassword() {
-    const password = document.getElementById('newPassword').value;
-    fetch(`${apiBase}/reset_password`, {
-        method: 'POST',
-        body: JSON.stringify({ password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('resetModal');
-            showModal('loginModal');
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function createPost() {
-    const type = document.getElementById('addType').value;
-    const description = document.getElementById('addDescription').value;
-    const file = document.getElementById('addMedia').files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    fetch(`${apiBase}/upload`, { method: 'POST', body: formData, credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        fetch(`${apiBase}/post/create`, {
-            method: 'POST',
-            body: JSON.stringify({ type, description, media_url: data.url }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => {
-            hideModal('addModal');
-            loadView('home');
-        });
-    });
-}
-
-function likePost(id) {
-    fetch(`${apiBase}/post/like`, {
-        method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Liked/Unliked'));
-}
-
-function showCommentModal(id) {
-    showModal('commentModal');
-    sessionStorage.setItem('currentPostId', id);
-    fetch(`${apiBase}/post/comments/${id}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(comments => {
-        const commentList = document.getElementById('commentList');
-        commentList.innerHTML = '';
-        comments.forEach(comment => {
-            const item = document.createElement('div');
-            item.textContent = `${comment.real_name}: ${comment.text}`;
-            commentList.appendChild(item);
-        });
-    });
-}
-
-function addComment() {
-    const text = document.getElementById('commentText').value;
-    const post_id = sessionStorage.getItem('currentPostId');
-    fetch(`${apiBase}/post/comment`, {
-        method: 'POST',
-        body: JSON.stringify({ post_id, text }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => {
-        document.getElementById('commentText').value = '';
-        showCommentModal(post_id);
-    });
-}
-
-function sharePost(id) {
-    alert('Share link: /post/' + id);
-}
-
-function followUser(id) {
-    fetch(`${apiBase}/follow/request`, {
-        method: 'POST',
-        body: JSON.stringify({ target_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Requested'));
-}
-
-function savePost(id) {
-    fetch(`${apiBase}/post/save`, {
-        method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Saved/Unsaved'));
-}
-
-function repostPost(id) {
-    fetch(`${apiBase}/post/repost`, {
-        method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Reposted'));
-}
-
-function reportPost(id) {
-    const reason = prompt('Reason:');
-    if (reason) {
-        fetch(`${apiBase}/post/report`, {
-            method: 'POST',
-            body: JSON.stringify({ post_id: id, reason }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Reported'));
-    }
-}
-
-function hidePost(id) {
-    fetch(`${apiBase}/post/hide`, {
-        method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Hidden'));
-}
-
-function toggleNotifications(user_id) {
-    fetch(`${apiBase}/post/subscribe`, {
-        method: 'POST',
-        body: JSON.stringify({ post_user_id: user_id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Toggled'));
-}
-
-function blockUser(id) {
-    fetch(`${apiBase}/block`, {
-        method: 'POST',
-        body: JSON.stringify({ target_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Blocked'));
-}
-
-function messageUser(id) {
-    showChatModal(id, false);
-}
-
-function createGroup() {
-    const name = document.getElementById('groupName').value;
-    const description = document.getElementById('groupDescription').value;
-    // Upload pic if any
-    fetch(`${apiBase}/group/create`, {
-        method: 'POST',
-        body: JSON.stringify({ name, description }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => {
-        hideModal('groupCreateModal');
-        loadView('inbox');
-    });
-}
-
-function editGroup() {
-    const group_id = sessionStorage.getItem('currentGroupId');
-    const name = document.getElementById('editGroupName').value;
-    const description = document.getElementById('editGroupDescription').value;
-    fetch(`${apiBase}/group/edit`, {
-        method: 'POST',
-        body: JSON.stringify({ group_id, name, description }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => {
-        hideModal('groupEditModal');
-        showChatModal(group_id, true);
-    });
-}
-
-function report() {
-    // Generic report
-    alert('Reported');
-}
+            const item = document.create
