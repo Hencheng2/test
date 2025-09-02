@@ -65,40 +65,43 @@ body {
     float: right;
     font-size: 28px;
     font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
     cursor: pointer;
 }
 
-.close:hover {
-    color: #000;
+/* Post and stories styles */
+.stories {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    padding: 10px 0;
+    white-space: nowrap;
+    border-bottom: 1px solid #ddd;
 }
 
 .story-circle {
-    border-radius: 50%;
     width: 60px;
     height: 60px;
-    margin: 10px;
+    border-radius: 50%;
+    border: 2px solid #ff4500;
+    flex-shrink: 0;
     background-size: cover;
     background-position: center;
-    border: 3px solid #1877f2;
-    cursor: pointer;
     position: relative;
+    cursor: pointer;
 }
 
 .story-circle p {
     position: absolute;
     bottom: -20px;
-    width: 100%;
-    text-align: center;
+    left: 50%;
+    transform: translateX(-50%);
     font-size: 12px;
-    color: #1c1e21;
-}
-
-.stories {
-    display: flex;
-    overflow-x: auto;
-    padding: 10px 0;
-    background: #fff;
-    border-bottom: 1px solid #ddd;
 }
 
 .post {
@@ -107,6 +110,17 @@ body {
     padding: 15px;
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.post-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.post-header .user-info {
+    display: flex;
+    flex-direction: column;
 }
 
 .small-circle {
@@ -124,70 +138,106 @@ body {
     margin-top: 10px;
 }
 
+.post-actions {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 1.2rem;
+}
+
+.post-actions span {
+    cursor: pointer;
+}
+
+/* Reel styles */
+#reels-container {
+    height: calc(100vh - 70px);
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+}
+
+.reel {
+    height: 100%;
+    width: 100%;
+    position: relative;
+    scroll-snap-align: start;
+}
+
 .reel-video {
     width: 100%;
-    height: 100vh;
+    height: 100%;
     object-fit: cover;
 }
 
-.friends-list, .chat-list {
-    list-style: none;
-    padding: 0;
+.reel-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    color: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
 }
 
-.friends-item {
+.reel-user-info {
     display: flex;
     align-items: center;
-    margin: 10px 0;
+    gap: 10px;
+}
+
+.reel-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    font-size: 1.5rem;
+}
+
+/* Friends and Chat lists */
+.friends-navbar, .inbox-navbar {
+    display: flex;
+    justify-content: space-around;
+    background-color: white;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 10px;
+}
+
+.friends-item, .chat-item {
+    display: flex;
+    align-items: center;
     padding: 10px;
     background: #fff;
     border-radius: 8px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-.button-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
+.friends-item .user-info {
+    flex-grow: 1;
+    margin-left: 10px;
 }
 
-input, textarea, select {
-    display: block;
-    width: 100%;
-    margin: 10px 0;
-    padding: 10px;
-    box-sizing: border-box;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+.chat-item .chat-info {
+    flex-grow: 1;
+    margin-left: 10px;
 }
 
-button {
-    background-color: #1877f2;
+.chat-item .chat-meta {
+    text-align: right;
+}
+
+.unread-count {
+    background: red;
     color: white;
-    border: none;
-    cursor: pointer;
-    border-radius: 6px;
-    padding: 10px;
-    font-size: 16px;
-}
-
-button:hover {
-    background-color: #166fe5;
-}
-
-@media (min-width: 768px) {
-    .nav-bar {
-        position: fixed;
-        top: 0;
-        bottom: auto;
-        flex-direction: row;
-        padding: 15px;
-    }
-    #content {
-        padding: 80px 20px 20px;
-    }
-    .modal-content {
-        width: 70%;
-        max-width: 600px;
-    }
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 12px;
 }
