@@ -1,306 +1,48 @@
-// static/script.js (fully adjusted for frontend functionality)
+// Script for handling modals, API calls, events, swipes, etc.
 
-const apiBase = '/api';
+// Global vars
+let currentUserId = null;
+let currentSection = 'home';
 
-function showModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) {
-        modal.style.display = 'block';
-    }
-}
-
-function hideModal(id) {
-    const modal = document.getElementById(id);
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-// Global state
-let currentPage = 1;
-let loading = false;
-let currentView = 'home';
-let currentStoryIndex = 0;
-let stories = [];
-let currentChatId = null;
-let isGroupChat = false;
-
+// Load on start
 document.addEventListener('DOMContentLoaded', () => {
-    checkLoggedIn();
-    // Add event listeners for navigation
-    document.getElementById('homeBtn')?.addEventListener('click', () => loadView('home'));
-    document.getElementById('reelsBtn')?.addEventListener('click', () => loadView('reels'));
-    document.getElementById('friendsBtn')?.addEventListener('click', () => loadView('friends'));
-    document.getElementById('inboxBtn')?.addEventListener('click', () => loadView('inbox'));
-    document.getElementById('profileBtn')?.addEventListener('click', () => loadView('profile', sessionStorage.getItem('user_id')));
-    document.getElementById('searchBtn')?.addEventListener('click', () => loadView('search'));
-    document.getElementById('addBtn')?.addEventListener('click', () => showModal('addModal'));
-    document.getElementById('notifBtn')?.addEventListener('click', () => loadView('notifications'));
-    document.getElementById('menuBtn')?.addEventListener('click', () => loadView('menu'));
-    document.getElementById('adminBtn')?.addEventListener('click', () => loadView('admin'));
-
-    // Handle form submissions
-    document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
-    document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
-    document.getElementById('postForm')?.addEventListener('submit', handlePostCreate);
-    document.getElementById('reelForm')?.addEventListener('submit', handleReelCreate);
-    document.getElementById('storyForm')?.addEventListener('submit', handleStoryCreate);
-    document.getElementById('chatForm')?.addEventListener('submit', handleSendMessage);
-    document.getElementById('groupCreateForm')?.addEventListener('submit', handleGroupCreate);
-    document.getElementById('groupEditForm')?.addEventListener('submit', handleGroupEdit);
-    document.getElementById('profileEditForm')?.addEventListener('submit', handleProfileEdit);
-
-    // Initial check on page load
-    window.addEventListener('scroll', handleInfiniteScroll);
+    checkLogin();
+    loadSection('home');
+    // Event listeners for nav buttons
+    document.querySelectorAll('nav button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const section = btn.id.replace('-btn', '');
+            loadSection(section);
+        });
+    });
 });
 
-// Replace alert with a custom message box
-function showMessage(message) {
-    const messageBox = document.getElementById('messageBox');
-    if (messageBox) {
-        messageBox.textContent = message;
-        messageBox.style.display = 'block';
-        setTimeout(() => {
-            messageBox.style.display = 'none';
-        }, 3000);
-    }
-}
-
-function handleLogin(e) {
-    e.preventDefault();
-    const username = e.target.username.value;
-    const password = e.target.password.value;
-    fetch(`${apiBase}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            sessionStorage.setItem('user_id', data.user_id);
-            if (data.is_admin) {
-                document.getElementById('adminBtn').style.display = 'block';
-            }
-            loadView('home');
-        } else {
-            showMessage(data.message);
+// Check if logged in
+async function checkLogin() {
+    const response = await fetch('/api/profile', { method: 'GET' });
+    if (response.ok) {
+        const data = await response.json();
+        currentUserId = data.id;
+        if (data.is_admin) {
+            document.getElementById('admin-btn').style.display = 'block';
         }
-    });
-}
-
-function handleRegister(e) {
-    e.preventDefault();
-    const username = e.target.username.value;
-    const real_name = e.target.real_name.value;
-    const password = e.target.password.value;
-    fetch(`${apiBase}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, real_name, password }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            showMessage(data.message);
-            document.getElementById('login-link').click();
-        } else {
-            showMessage(data.message);
-        }
-    });
-}
-
-function handlePostCreate(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    fetch(`${apiBase}/post/create`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        showMessage(data.message);
-        hideModal('addModal');
-        loadView('home');
-    });
-}
-
-function handleReelCreate(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    fetch(`${apiBase}/reel/create`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        showMessage(data.message);
-        hideModal('addModal');
-        loadView('reels');
-    });
-}
-
-function handleStoryCreate(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData(form);
-    fetch(`${apiBase}/story/create`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        showMessage(data.message);
-        hideModal('addModal');
-        loadView('home');
-    });
-}
-
-function handleProfileEdit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const formData = new FormData();
-    formData.append('bio', form.bio.value);
-    if (form.profile_pic.files[0]) {
-        formData.append('profile_pic', form.profile_pic.files[0]);
-    }
-
-    fetch(`${apiBase}/profile/edit`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        showMessage(data.message);
-        hideModal('profileEditModal');
-        loadView('profile', sessionStorage.getItem('user_id'));
-    });
-}
-
-function handleSendMessage(e) {
-    e.preventDefault();
-    const text = e.target.text.value;
-    if (!text) return;
-
-    fetch(`${apiBase}/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            receiver_id: currentChatId,
-            text: text,
-            is_group: isGroupChat
-        }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            e.target.text.value = '';
-            loadChatHistory(currentChatId, isGroupChat);
-        } else {
-            showMessage(data.message);
-        }
-    });
-}
-
-function handleGroupCreate(e) {
-    e.preventDefault();
-    const name = document.getElementById('groupName').value;
-    const description = document.getElementById('groupDescription').value;
-    fetch(`${apiBase}/group/create`, {
-        method: 'POST',
-        body: JSON.stringify({ name, description }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            hideModal('groupCreateModal');
-            loadView('inbox');
-        } else {
-            showMessage(data.message);
-        }
-    });
-}
-
-function handleGroupEdit(e) {
-    e.preventDefault();
-    const group_id = sessionStorage.getItem('currentGroupId');
-    const name = document.getElementById('editGroupName').value;
-    const description = document.getElementById('editGroupDescription').value;
-    fetch(`${apiBase}/group/edit`, {
-        method: 'POST',
-        body: JSON.stringify({ group_id, name, description }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            hideModal('groupEditModal');
-            loadChatHistory(group_id, true);
-        } else {
-            showMessage(data.message);
-        }
-    });
-}
-
-function checkLoggedIn() {
-    if (!sessionStorage.getItem('user_id')) {
-        loadAuthView();
     } else {
-        loadView('home');
+        // Redirect to login modal or page, but since single HTML, show login modal
+        showModal('login-modal');
     }
 }
 
-function loadAuthView() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div id="auth-container">
-            <div id="auth-form-container">
-                <div id="login-view">
-                    <h2>Login</h2>
-                    <form id="loginForm">
-                        <input type="text" name="username" placeholder="Username" required>
-                        <input type="password" name="password" placeholder="Password" required>
-                        <button type="submit">Log In</button>
-                    </form>
-                    <p>Don't have an account? <span class="switch-link" onclick="showRegister()">Sign Up</span></p>
-                </div>
-                <div id="register-view" style="display:none;">
-                    <h2>Register</h2>
-                    <form id="registerForm">
-                        <input type="text" name="username" placeholder="Username" required>
-                        <input type="text" name="real_name" placeholder="Full Name" required>
-                        <input type="password" name="password" placeholder="Password" required>
-                        <button type="submit">Register</button>
-                    </form>
-                    <p>Already have an account? <span class="switch-link" onclick="showLogin()">Log In</span></p>
-                </div>
-            </div>
-        </div>
-    `;
-    document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
-    document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
-    document.querySelector('.nav-bar').style.display = 'none';
-}
-
-function showRegister() {
-    document.getElementById('login-view').style.display = 'none';
-    document.getElementById('register-view').style.display = 'block';
-}
-function showLogin() {
-    document.getElementById('login-view').style.display = 'block';
-    document.getElementById('register-view').style.display = 'none';
-}
-
-function loadView(viewName, param = null) {
-    const content = document.getElementById('content');
-    content.innerHTML = '<h1>Loading...</h1>';
-    document.querySelector('.nav-bar').style.display = 'flex';
-    document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`${viewName}Btn`)?.classList.add('active');
-    currentView = viewName;
-    currentPage = 1;
-    loading = false;
-
-    switch (viewName) {
+// Load section
+async function loadSection(section) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(section).classList.add('active');
+    currentSection = section;
+    switch (section) {
         case 'home':
-            loadHomeFeed();
+            loadHome();
             break;
         case 'reels':
-            loadReelsFeed();
+            loadReels();
             break;
         case 'friends':
             loadFriends();
@@ -309,496 +51,592 @@ function loadView(viewName, param = null) {
             loadInbox();
             break;
         case 'profile':
-            loadProfile(param);
+            loadProfile(currentUserId);
             break;
         case 'search':
             loadSearch();
             break;
+        case 'addto':
+            loadAddTo();
+            break;
         case 'notifications':
             loadNotifications();
-            break;
-        case 'admin':
-            loadAdminDashboard();
             break;
         case 'menu':
             loadMenu();
             break;
-        default:
-            content.innerHTML = '<h1>View Not Found</h1>';
+        case 'admin':
+            loadAdmin();
+            break;
     }
 }
 
-function loadHomeFeed() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div id="stories-section"></div>
-        <div id="posts-section"></div>
-    `;
-    loadStories();
-    loadPosts();
+// Show modal
+function showModal(modalId) {
+    document.getElementById(modalId).style.display = 'flex';
 }
 
-function loadStories() {
-    fetch(`${apiBase}/story/feed`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const storiesContainer = document.getElementById('stories-section');
-            storiesContainer.innerHTML = '';
-            if (data.success && data.stories.length > 0) {
-                stories = data.stories;
-                const storyList = document.createElement('div');
-                storyList.className = 'stories-container';
-                data.stories.forEach((story, index) => {
-                    const storyItem = document.createElement('div');
-                    storyItem.className = 'story-item';
-                    storyItem.innerHTML = `
-                        <img src="${story.user.profile_pic_url || '/static/default-pfp.png'}" alt="${story.user.username}" class="story-circle">
-                        <p class="story-username">${story.user.username}</p>
-                    `;
-                    storyItem.onclick = () => showStoryModal(index);
-                    storyList.appendChild(storyItem);
-                });
-                storiesContainer.appendChild(storyList);
-            } else {
-                storiesContainer.innerHTML = '<p>No stories to show.</p>';
-            }
-        });
-}
+// Close modal
+document.querySelectorAll('.close').forEach(close => {
+    close.addEventListener('click', () => {
+        close.parentElement.style.display = 'none';
+    });
+});
 
-function showStoryModal(index) {
-    currentStoryIndex = index;
-    const story = stories[currentStoryIndex];
-    if (!story) {
-        return hideModal('storyModal');
-    }
-
-    const storyModal = document.getElementById('storyModal');
-    const storyContent = storyModal.querySelector('.story-modal-content');
-    const mediaElement = story.media_url.endsWith('.mp4') ?
-        `<video src="${story.media_url}" class="story-media" controls autoplay playsinline></video>` :
-        `<img src="${story.media_url}" class="story-media">`;
-
-    storyContent.innerHTML = `
-        <div class="story-header">
-            <img src="${story.user.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic">
-            <div class="story-user-info">
-                <span class="story-username">${story.user.username}</span>
-            </div>
-            <span class="close" onclick="hideModal('storyModal')">&times;</span>
-        </div>
-        ${mediaElement}
-    `;
-
-    showModal('storyModal');
-}
-
-function loadPosts(append = false) {
-    if (loading) return;
-    loading = true;
-    fetch(`${apiBase}/post/feed?page=${currentPage}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const postsContainer = document.getElementById('posts-section');
-            if (data.success && data.posts.length > 0) {
-                data.posts.forEach(post => {
-                    const postCard = document.createElement('div');
-                    postCard.className = 'post-card';
-                    postCard.innerHTML = `
-                        <div class="post-header">
-                            <img src="${post.user.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic" onclick="loadView('profile', '${post.user.id}')">
-                            <div>
-                                <div><span class="username">${post.user.real_name}</span></div>
-                                <div class="post-timestamp">${new Date(post.timestamp).toLocaleString()}</div>
-                            </div>
-                        </div>
-                        <img src="${post.media_url}" class="post-media">
-                        <div class="post-actions">
-                            <button class="post-action-btn ${post.liked_by_user ? 'liked' : ''}" onclick="likeContent('${post.id}', 'post')">
-                                <i class="fa fa-heart"></i>
-                                <span>${post.like_count}</span>
-                            </button>
-                            <button class="post-action-btn" onclick="showCommentModal('${post.id}')">
-                                <i class="fa fa-comment"></i>
-                            </button>
-                        </div>
-                        <div class="post-info">
-                            <p>${post.description}</p>
-                        </div>
-                    `;
-                    postsContainer.appendChild(postCard);
-                });
-                currentPage++;
-                loading = false;
-            } else if (!append) {
-                postsContainer.innerHTML = '<p>No posts to display.</p>';
-            }
-        });
-}
-
-function handleInfiniteScroll() {
-    if (currentView === 'home' && window.innerHeight + window.scrollY >= document.body.offsetHeight - 500 && !loading) {
-        loadPosts(true);
-    }
-}
-
-function likeContent(contentId, contentType) {
-    fetch(`${apiBase}/post/like`, {
+// Login form
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const identifier = document.getElementById('login-identifier').value;
+    const password = document.getElementById('login-password').value;
+    const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: contentId }),
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            loadView('home'); // Reload to show updated count
+        body: JSON.stringify({ identifier, password })
+    });
+    if (response.ok) {
+        checkLogin();
+        showModal('none'); // Close
+        loadSection('home');
+    } else {
+        alert('Login failed');
+    }
+});
+
+// Register form
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('reg-username').value;
+    const password = document.getElementById('reg-password').value;
+    const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    });
+    const data = await response.json();
+    if (response.ok) {
+        alert(`Registered! Unique key: ${data.unique_key}`);
+        showModal('login-modal');
+    } else {
+        alert(data.error);
+    }
+});
+
+// Forgot form
+document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('forgot-username').value;
+    const key = document.getElementById('forgot-key').value;
+    const response = await fetch('/api/forgot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, unique_key: key })
+    });
+    if (response.ok) {
+        showModal('reset-modal');
+    } else {
+        alert('Invalid');
+    }
+});
+
+// Reset form
+document.getElementById('reset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = document.getElementById('reset-password').value;
+    const response = await fetch('/api/reset_password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+    });
+    if (response.ok) {
+        alert('Reset successful');
+        showModal('login-modal');
+    } else {
+        alert('Error');
+    }
+});
+
+// Load home
+async function loadHome() {
+    const response = await fetch('/api/home');
+    const data = await response.json();
+    const storiesDiv = document.getElementById('home-stories');
+    storiesDiv.innerHTML = '';
+    data.stories.forEach(s => {
+        const circle = document.createElement('div');
+        circle.classList.add('story-circle');
+        circle.innerHTML = `<img src="${s.media_url || '/static/default.jpg'}"><span>${s.user}</span>`;
+        circle.addEventListener('click', () => viewStory(s.id));
+        storiesDiv.appendChild(circle);
+    });
+    loadPosts(1);
+}
+
+// View story
+async function viewStory(storyId) {
+    const response = await fetch(`/api/story/${storyId}`);
+    const data = await response.json();
+    const modal = document.getElementById('story-modal');
+    const content = document.getElementById('story-content');
+    content.innerHTML = data.media_url.endsWith('.mp4') ? `<video src="${data.media_url}" autoplay loop></video>` : `<img src="${data.media_url}">`;
+    showModal('story-modal');
+    // Touch events for swipe
+    let touchStartX = 0;
+    let touchEndX = 0;
+    modal.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    });
+    modal.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) {
+            // Next story
+            nextStory();
+        } else if (touchEndX > touchStartX + 50) {
+            // Prev story
+            prevStory();
+        } else if (Math.abs(e.changedTouches[0].screenY - touchStartY) > 50) {
+            // Swipe down to close
+            modal.style.display = 'none';
+        }
+    });
+    // Pause on hold
+    let timer;
+    modal.addEventListener('touchstart', () => {
+        timer = setTimeout(() => {
+            content.querySelector('video') ? content.querySelector('video').pause() : '';
+        }, 200);
+    });
+    modal.addEventListener('touchend', () => clearTimeout(timer));
+    // Assume next/prev functions fetch next story id
+}
+
+// Load posts with endless scroll
+let postPage = 1;
+async function loadPosts(page) {
+    const response = await fetch(`/api/posts?page=${page}`);
+    const data = await response.json();
+    const postsDiv = document.getElementById('home-posts');
+    data.posts.forEach(p => {
+        const postDiv = document.createElement('div');
+        postDiv.classList.add('post');
+        postDiv.innerHTML = `
+            <div class="post-header">
+                <img src="${p.user.profile_pic || '/static/default.jpg'}">
+                <div>
+                    <strong>${p.user.real_name}</strong> @${p.user.username}
+                    <small>${p.timestamp}</small>
+                </div>
+            </div>
+            <p>${p.description}</p>
+            ${p.media_url ? `<img src="${p.media_url}" class="post-media">` : ''}
+            <div class="post-actions">
+                <button onclick="likePost(${p.id})"><i class="fa fa-heart"></i> ${p.likes}</button>
+                <button onclick="commentPost(${p.id})"><i class="fa fa-comment"></i> ${p.comments}</button>
+                <button onclick="sharePost(${p.id})"><i class="fa fa-share"></i></button>
+                ${!p.is_own ? `<button onclick="followUser(${p.user.id})"><i class="fa fa-user-plus"></i></button>` : ''}
+                <button onclick="savePost(${p.id})"><i class="fa fa-bookmark"></i></button>
+                ${!p.is_own ? `<button onclick="repost(${p.id})"><i class="fa fa-retweet"></i></button>` : ''}
+                <small>Views: ${p.views}</small>
+                ${!p.is_own ? `<button onclick="reportPost(${p.id})"><i class="fa fa-flag"></i></button>` : ''}
+                <button onclick="hidePost(${p.id})"><i class="fa fa-eye-slash"></i></button>
+                ${!p.is_own ? `<button onclick="blockUser(${p.user.id})"><i class="fa fa-ban"></i></button>` : ''}
+            </div>
+        `;
+        postsDiv.appendChild(postDiv);
+    });
+    if (data.has_next) {
+        postPage++;
+        // Endless scroll listener
+        window.addEventListener('scroll', () => {
+            if (window.innerHeight + window.scrollY >= document.body.offsetHeight) {
+                loadPosts(postPage);
+            }
+        });
+    }
+}
+
+// Similar for reels load, with video tags and touch pause
+async function loadReels() {
+    const response = await fetch('/api/reels');
+    const data = await response.json();
+    const reelsDiv = document.getElementById('reels-container');
+    reelsDiv.innerHTML = '';
+    data.reels.forEach(r => {
+        const reelDiv = document.createElement('div');
+        reelDiv.classList.add('reel');
+        reelDiv.innerHTML = `
+            <video src="${r.media_url}" autoplay loop></video>
+            <div class="reel-info">
+                <strong>${r.user.real_name}</strong> @${r.user.username}
+                <p>${r.description}</p>
+            </div>
+            <div class="reel-actions">
+                <button onclick="followUser(${r.user.id})"><i class="fa fa-plus-circle"></i></button>
+                <button onclick="likePost(${r.id})"><i class="fa fa-heart"></i></button>
+                <button onclick="repost(${r.id})"><i class="fa fa-retweet"></i></button>
+                <button onclick="commentPost(${r.id})"><i class="fa fa-comment"></i></button>
+                <button onclick="sharePost(${r.id})"><i class="fa fa-share"></i></button>
+                <button onclick="savePost(${r.id})"><i class="fa fa-bookmark"></i></button>
+                <button onclick="downloadReel(${r.id})"><i class="fa fa-download"></i></button>
+            </div>
+        `;
+        // Touch to pause/play
+        reelDiv.addEventListener('touchstart', () => {
+            const video = reelDiv.querySelector('video');
+            video.paused ? video.play() : video.pause();
+        });
+        reelsDiv.appendChild(reelDiv);
+    });
+}
+
+// Friends load with tabs
+async function loadFriends() {
+    const tabs = document.querySelectorAll('#friends-tabs button');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', async () => {
+            const type = tab.id.replace('-tab', '');
+            const response = await fetch(`/api/friends/${type}`);
+            const data = await response.json();
+            const list = document.getElementById('friends-list');
+            list.innerHTML = '';
+            data[type].forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <img src="${item.profile_pic || '/static/default.jpg'}">
+                    <div>
+                        <strong>${item.real_name}</strong>
+                        <small>${item.mutual} mutual</small>
+                    </div>
+                    <button onclick="messageUser(${item.id})"><i class="fa fa-message"></i></button>
+                    ${type === 'followers' ? '<button onclick="blockUser(${item.id})"><i class="fa fa-ban"></i></button>' : ''}
+                    ${type === 'following' || type === 'friends' ? '<button onclick="showDropdown(${item.id})"><i class="fa fa-ellipsis-v"></i></button>' : ''}
+                    ${type === 'requests' ? '<button onclick="acceptRequest(${item.id})">Accept</button><button onclick="declineRequest(${item.id})">Decline</button><button onclick="blockUser(${item.id})">Block</button>' : ''}
+                    ${type === 'suggested' ? '<button onclick="followUser(${item.id})">Follow</button><button onclick="removeSuggested(${item.id})">Remove</button><button onclick="blockUser(${item.id})">Block</button>' : ''}
+                `;
+                li.addEventListener('click', () => loadProfile(item.id));
+                list.appendChild(li);
+            });
+        });
+    });
+    // Load default followers
+    tabs[0].click();
+}
+
+// Inbox load
+async function loadInbox() {
+    const tabs = document.querySelectorAll('#inbox-tabs button');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', async () => {
+            const type = tab.id.replace('-tab', '');
+            const response = await fetch(`/api/inbox/${type}`);
+            const data = await response.json();
+            const list = document.getElementById('inbox-list');
+            list.innerHTML = '';
+            data[type].forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <img src="${item.profile_pic || '/static/default.jpg'}">
+                    <div>
+                        <strong>${item.real_name || item.name}</strong>
+                        <small>${item.last_msg_snippet}</small>
+                    </div>
+                    <small>${item.last_time}</small>
+                    ${item.unread > 0 ? `<span class="unread">${item.unread}</span>` : ''}
+                `;
+                li.addEventListener('click', () => openChat(item.other_id || item.group_id, type === 'groups'));
+                list.appendChild(li);
+            });
+        });
+    });
+    // Default chats
+    tabs[0].click();
+    // New chat button
+    document.getElementById('new-chat-btn').addEventListener('click', () => showModal('new-chat-modal'));
+    // Search in new chat
+    document.getElementById('new-chat-search').addEventListener('input', (e) => {
+        // Filter friends/groups client-side or API
+    });
+    // Create group
+    document.getElementById('create-group-btn').addEventListener('click', () => showModal('create-group-modal'));
+    document.getElementById('create-group-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const response = await fetch('/api/create_group', { method: 'POST', body: formData });
+        if (response.ok) {
+            alert('Group created');
+            showModal('none');
         }
     });
 }
 
-function showCommentModal(postId) {
-    const modal = document.getElementById('commentModal');
-    const commentsList = modal.querySelector('#comments-list');
-    const commentForm = modal.querySelector('#commentForm');
-    commentForm.onsubmit = (e) => {
-        e.preventDefault();
-        const text = commentForm.text.value;
-        fetch(`${apiBase}/post/comment`, {
+// Open chat modal
+async function openChat(id, isGroup) {
+    showModal(isGroup ? 'group-chat-modal' : 'chat-modal');
+    const response = await fetch(`/api/messages/${isGroup ? 'group' : 'private'}/${id}`);
+    const data = await response.json();
+    const messagesDiv = document.getElementById(isGroup ? 'group-messages' : 'chat-messages');
+    messagesDiv.innerHTML = '';
+    data.messages.forEach(m => {
+        const msgDiv = document.createElement('div');
+        msgDiv.textContent = `${m.sender_name || ''}: ${m.text}`;
+        if (m.media_url) {
+            const media = m.media_url.endsWith('.mp4') ? document.createElement('video') : document.createElement('img');
+            media.src = m.media_url;
+            msgDiv.appendChild(media);
+        }
+        messagesDiv.appendChild(msgDiv);
+    });
+    // Send message
+    const input = document.getElementById(isGroup ? 'group-input' : 'chat-input');
+    const sendBtn = document.getElementById(isGroup ? 'group-send' : 'chat-send');
+    sendBtn.addEventListener('click', async () => {
+        const text = input.value;
+        await fetch(`/api/messages/${isGroup ? 'group' : 'private'}/${id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ post_id: postId, text }),
-            credentials: 'include'
-        }).then(res => res.json()).then(data => {
-            if (data.success) {
-                commentForm.text.value = '';
-                loadComments(postId, commentsList);
-            }
+            body: JSON.stringify({ text })
         });
-    };
-    loadComments(postId, commentsList);
-    showModal('commentModal');
+        input.value = '';
+        openChat(id, isGroup); // Reload
+    });
+    // Other buttons: customize, wallpaper, search, etc. - stub
 }
 
-function loadComments(postId, container) {
-    container.innerHTML = 'Loading comments...';
-    fetch(`${apiBase}/post/comments?post_id=${postId}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            container.innerHTML = '';
-            if (data.success && data.comments.length > 0) {
-                data.comments.forEach(comment => {
-                    const commentEl = document.createElement('div');
-                    commentEl.className = 'comment-item';
-                    commentEl.innerHTML = `
-                        <img src="${comment.user.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic" alt="">
-                        <div>
-                            <span class="username">${comment.user.username}</span> ${comment.text}
-                        </div>
-                    `;
-                    container.appendChild(commentEl);
-                });
-            } else {
-                container.innerHTML = '<p>No comments yet.</p>';
-            }
-        });
-}
-
-function loadReelsFeed() {
-    const content = document.getElementById('content');
-    content.innerHTML = '<div id="reels-container"></div>';
-    fetch(`${apiBase}/reel/feed`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const reelsContainer = document.getElementById('reels-container');
-            if (data.success && data.reels.length > 0) {
-                data.reels.forEach(reel => {
-                    const reelItem = document.createElement('div');
-                    reelItem.className = 'reel-video';
-                    reelItem.innerHTML = `
-                        <video src="${reel.media_url}" controls></video>
-                        <p>${reel.description}</p>
-                    `;
-                    reelsContainer.appendChild(reelItem);
-                });
-            } else {
-                reelsContainer.innerHTML = '<p>No reels to display.</p>';
-            }
-        });
-}
-
-function loadFriends() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>My Friends</h2>
-            <div id="friend-list" class="friend-list"></div>
-        </div>
+// Load profile
+async function loadProfile(userId) {
+    const response = await fetch(`/api/profile/${userId}`);
+    const data = await response.json();
+    showModal('profile-modal');
+    document.getElementById('profile-pic').src = data.profile_pic || '/static/default.jpg';
+    document.getElementById('profile-name').textContent = data.real_name;
+    document.getElementById('profile-key').textContent = data.unique_key || '';
+    document.getElementById('profile-stats').innerHTML = `
+        Friends: ${data.friends_count} | Followers: ${data.followers_count} | Following: ${data.following_count}
     `;
-    fetch(`${apiBase}/friends/list`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const friendList = document.getElementById('friend-list');
-            if (data.success && data.friends.length > 0) {
-                data.friends.forEach(friend => {
-                    const friendItem = document.createElement('div');
-                    friendItem.className = 'friend-item';
-                    friendItem.innerHTML = `
-                        <img src="${friend.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic" onclick="loadView('profile', '${friend.id}')">
-                        <span>${friend.real_name}</span>
-                    `;
-                    friendList.appendChild(friendItem);
-                });
-            } else {
-                friendList.innerHTML = '<p>You have no friends yet.</p>';
-            }
-        });
-}
-
-function loadInbox() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>Inbox</h2>
-            <button onclick="showModal('groupCreateModal')">Create Group</button>
-            <div id="inbox-list" class="inbox-list"></div>
-        </div>
-    `;
-    fetch(`${apiBase}/inbox/list`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const inboxList = document.getElementById('inbox-list');
-            inboxList.innerHTML = '';
-            if (data.success) {
-                data.direct_chats.forEach(chat => {
-                    const chatItem = document.createElement('div');
-                    chatItem.className = 'chat-item';
-                    chatItem.onclick = () => showChatModal(chat.id, false);
-                    chatItem.innerHTML = `
-                        <img src="${chat.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic">
-                        <div class="chat-info">
-                            <div class="chat-name">${chat.real_name}</div>
-                            <div class="chat-last-msg">${chat.last_message}</div>
-                        </div>
-                        ${chat.unread > 0 ? `<div class="unread">${chat.unread}</div>` : ''}
-                    `;
-                    inboxList.appendChild(chatItem);
-                });
-                data.group_chats.forEach(chat => {
-                    const chatItem = document.createElement('div');
-                    chatItem.className = 'chat-item';
-                    chatItem.onclick = () => showChatModal(chat.id, true);
-                    chatItem.innerHTML = `
-                        <img src="${chat.profile_pic_url || '/static/default-group-pfp.png'}" class="profile-pic">
-                        <div class="chat-info">
-                            <div class="chat-name">${chat.name}</div>
-                            <div class="chat-last-msg">${chat.last_message}</div>
-                        </div>
-                    `;
-                    inboxList.appendChild(chatItem);
-                });
-                if (data.direct_chats.length === 0 && data.group_chats.length === 0) {
-                    inboxList.innerHTML = '<p>Your inbox is empty.</p>';
-                }
-            }
-        });
-}
-
-function showChatModal(chatId, isGroup) {
-    currentChatId = chatId;
-    isGroupChat = isGroup;
-    const modal = document.getElementById('chatModal');
-    const modalTitle = modal.querySelector('h3');
-    modalTitle.textContent = isGroup ? 'Group Chat' : 'Direct Message';
-    
-    sessionStorage.setItem('currentGroupId', chatId);
-    
-    if (isGroup) {
-      document.getElementById('groupEditBtn').style.display = 'block';
+    if (data.is_own) {
+        document.getElementById('profile-actions').innerHTML = `
+            <button onclick="editProfile()">Edit</button>
+            <button onclick="shareProfile(${userId})">Share</button>
+        `;
+        // Load tabs: posts, locked, saved, reposts, liked, reels
+        loadProfileTab('posts', data.posts);
     } else {
-      document.getElementById('groupEditBtn').style.display = 'none';
+        document.getElementById('profile-actions').innerHTML = `
+            <button onclick="followUser(${userId})">Follow</button>
+            <button onclick="messageUser(${userId})">Message</button>
+        `;
+        // Tabs: posts, reels
+        loadProfileTab('posts', data.posts);
     }
-
-    loadChatHistory(chatId, isGroup);
-    showModal('chatModal');
-}
-
-function loadChatHistory(chatId, isGroup) {
-    const chatContainer = document.getElementById('chat-messages');
-    chatContainer.innerHTML = 'Loading messages...';
-    fetch(`${apiBase}/chat/history?chat_id=${chatId}&is_group=${isGroup}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            chatContainer.innerHTML = '';
-            if (data.success && data.messages.length > 0) {
-                data.messages.forEach(msg => {
-                    const messageEl = document.createElement('div');
-                    messageEl.className = 'chat-message-bubble ' + (msg.sender_id === sessionStorage.getItem('user_id') ? 'sent' : 'received');
-                    messageEl.innerHTML = `
-                        <div>${msg.text}</div>
-                    `;
-                    chatContainer.appendChild(messageEl);
-                });
-            } else {
-                chatContainer.innerHTML = '<p>Start the conversation!</p>';
-            }
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+    document.getElementById('profile-bio').textContent = data.bio;
+    // User info, show first 3, more button
+    const infoDiv = document.getElementById('profile-info');
+    infoDiv.innerHTML = '';
+    const info = data.user_info;
+    const keys = Object.keys(info).slice(0, 3);
+    keys.forEach(k => {
+        if (info[k]) infoDiv.innerHTML += `<p>${k}: ${info[k]}</p>`;
+    });
+    if (Object.keys(info).length > 3) {
+        const moreBtn = document.createElement('button');
+        moreBtn.textContent = 'Show more';
+        moreBtn.addEventListener('click', () => {
+            Object.keys(info).slice(3).forEach(k => {
+                if (info[k]) infoDiv.innerHTML += `<p>${k}: ${info[k]}</p>`;
+            });
+            moreBtn.remove();
         });
+        infoDiv.appendChild(moreBtn);
+    }
 }
 
+// Edit profile form
+function editProfile() {
+    showModal('edit-profile-modal');
+    document.getElementById('edit-profile-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const response = await fetch('/api/profile/update', { method: 'POST', body: formData });
+        if (response.ok) {
+            alert('Updated');
+            showModal('none');
+            loadProfile(currentUserId);
+        }
+    });
+}
+
+// Load profile tab gallery
+function loadProfileTab(tab, ids) {
+    const gallery = document.getElementById('profile-gallery');
+    gallery.innerHTML = '';
+    ids.forEach(id => {
+        // Fetch post details if needed, or assume client fetches
+        const item = document.createElement('div');
+        item.textContent = `Post ${id}`;
+        item.addEventListener('click', () => viewPost(id));
+        gallery.appendChild(item);
+    });
+}
+
+// Load search
 function loadSearch() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>Search Users</h2>
-            <input type="text" id="searchInput" placeholder="Search by username or name">
-            <div id="searchResults" class="user-list"></div>
-        </div>
-    `;
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        const query = e.target.value;
-        if (query.length > 1) {
-            fetch(`${apiBase}/user/search?q=${query}`, { credentials: 'include' })
-                .then(res => res.json())
-                .then(data => {
-                    const resultsContainer = document.getElementById('searchResults');
-                    resultsContainer.innerHTML = '';
-                    if (data.success && data.users.length > 0) {
-                        data.users.forEach(user => {
-                            const userItem = document.createElement('div');
-                            userItem.className = 'friend-item';
-                            userItem.innerHTML = `
-                                <img src="${user.profile_pic_url || '/static/default-pfp.png'}" class="profile-pic">
-                                <span>${user.real_name} (@${user.username})</span>
-                                <button onclick="loadView('profile', '${user.id}')" style="margin-left:auto;">View Profile</button>
-                            `;
-                            resultsContainer.appendChild(userItem);
-                        });
-                    } else {
-                        resultsContainer.innerHTML = '<p>No users found.</p>';
-                    }
-                });
+    const searchInput = document.getElementById('search-bar');
+    searchInput.addEventListener('input', async () => {
+        const query = searchInput.value;
+        const tab = document.querySelector('.tabs button.active').id.replace('-tab', '');
+        const response = await fetch(`/api/search?query=${query}&tab=${tab}`);
+        const data = await response.json();
+        // Display results in #search-results
+    });
+    // Tabs click to switch
+}
+
+// Load add to
+function loadAddTo() {
+    // Buttons for post, reel, story
+    document.getElementById('add-post-btn').addEventListener('click', () => showModal('create-post-modal'));
+    // Similar for reel, story
+    document.getElementById('create-post-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        formData.append('type', 'post');
+        const response = await fetch('/api/create', { method: 'POST', body: formData });
+        if (response.ok) {
+            alert('Posted');
+            showModal('none');
         }
+    });
+    // Repeat for reel, story
+}
+
+// Load notifications
+async function loadNotifications() {
+    const response = await fetch('/api/notifications');
+    const data = await response.json();
+    const list = document.getElementById('notifications-list');
+    list.innerHTML = '';
+    data.notifications.forEach(n => {
+        const li = document.createElement('li');
+        li.textContent = `${n.message} - ${n.timestamp}`;
+        if (!n.is_read) li.style.fontWeight = 'bold';
+        li.addEventListener('click', () => markRead(n.id));
+        list.appendChild(li);
     });
 }
 
-function loadNotifications() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>Notifications</h2>
-            <div id="notifications-list"></div>
-        </div>
-    `;
-    fetch(`${apiBase}/notifications/get`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const list = document.getElementById('notifications-list');
-            if (data.success && data.notifications.length > 0) {
-                data.notifications.forEach(notif => {
-                    const notifItem = document.createElement('div');
-                    notifItem.className = 'notification-item';
-                    notifItem.innerHTML = `<p>${notif.content}</p>`;
-                    list.appendChild(notifItem);
-                });
-            } else {
-                list.innerHTML = '<p>You have no new notifications.</p>';
-            }
-        });
+async function markRead(notifId) {
+    await fetch(`/api/notification/mark_read/${notifId}`, { method: 'POST' });
+    loadNotifications();
 }
 
-function loadAdminDashboard() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>Admin Dashboard</h2>
-            <h3>User Management</h3>
-            <div id="admin-users-list"></div>
-            <h3>Pending Reports</h3>
-            <div id="admin-reports-list"></div>
-        </div>
-    `;
-    fetch(`${apiBase}/admin/dashboard`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                const usersList = document.getElementById('admin-users-list');
-                usersList.innerHTML = '<h4>Users</h4>';
-                data.users.forEach(user => {
-                    const userDiv = document.createElement('div');
-                    userDiv.className = 'admin-user-item';
-                    userDiv.innerHTML = `
-                        <span>${user.username} (${user.real_name}) - ${user.active ? 'Active' : 'Blocked'}</span>
-                        <button onclick="adminToggleActive('${user.id}')">${user.active ? 'Block' : 'Unblock'}</button>
-                    `;
-                    usersList.appendChild(userDiv);
-                });
-
-                const reportsList = document.getElementById('admin-reports-list');
-                reportsList.innerHTML = '<h4>Reports</h4>';
-                data.reports.forEach(report => {
-                    const reportDiv = document.createElement('div');
-                    reportDiv.className = 'admin-report-item';
-                    reportDiv.innerHTML = `
-                        <p>Report ID: ${report.id}</p>
-                        <p>Reason: ${report.reason}</p>
-                        <button onclick="adminResolveReport('${report.id}')">Resolve</button>
-                        <button onclick="adminDeleteContent('${report.id}')">Delete Content</button>
-                    `;
-                    reportsList.appendChild(reportDiv);
-                });
-            } else {
-                content.innerHTML = '<p>Access Denied.</p>';
-            }
-        });
-}
-
-function adminToggleActive(userId) {
-    fetch(`${apiBase}/admin/toggle_active`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
-        credentials: 'include'
-    }).then(() => loadAdminDashboard());
-}
-
-function adminResolveReport(reportId) {
-    fetch(`${apiBase}/admin/report/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_id: reportId }),
-        credentials: 'include'
-    }).then(() => loadAdminDashboard());
-}
-
-function adminDeleteContent(reportId) {
-    fetch(`${apiBase}/admin/report/delete_content`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_id: reportId }),
-        credentials: 'include'
-    }).then(() => loadAdminDashboard());
-}
-
+// Load menu
 function loadMenu() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="container">
-            <h2>Menu</h2>
-            <ul>
-                <li><button onclick="handleLogout()">Logout</button></li>
-                <li><button onclick="showModal('profileEditModal')">Edit Profile</button></li>
-                <li><button onclick="showModal('reportModal')">Report Something</button></li>
-            </ul>
-        </div>
-    `;
+    // Click handlers for help, settings, logout
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+        await fetch('/api/logout', { method: 'POST' });
+        window.location.reload();
+    });
+    // Settings form submit to /api/settings
 }
 
-function handleLogout() {
-    fetch(`${apiBase}/logout`, {
+// Load admin
+async function loadAdmin() {
+    const response = await fetch('/api/admin/users');
+    const data = await response.json();
+    const list = document.getElementById('admin-users');
+    list.innerHTML = '';
+    data.users.forEach(u => {
+        const li = document.createElement('li');
+        li.innerHTML = `${u.username} - <button onclick="deleteUser(${u.id})">Delete</button> <button onclick="banUser(${u.id})">Ban</button> <button onclick="warnUser(${u.id})">Warn</button>`;
+        list.appendChild(li);
+    });
+    // Similar for reports, send message, etc.
+}
+
+// Interaction functions
+async function likePost(postId) {
+    await fetch(`/api/like/${postId}`, { method: 'POST' });
+    loadSection(currentSection);
+}
+
+async function commentPost(postId) {
+    const text = prompt('Comment:');
+    if (text) {
+        await fetch(`/api/comment/${postId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        loadSection(currentSection);
+    }
+}
+
+async function repost(postId) {
+    await fetch(`/api/repost/${postId}`, { method: 'POST' });
+}
+
+async function savePost(postId) {
+    await fetch(`/api/save/${postId}`, { method: 'POST' });
+}
+
+async function reportPost(postId) {
+    const desc = prompt('Description:');
+    await fetch(`/api/report/${postId}`, {
         method: 'POST',
-        credentials: 'include'
-    }).then(res => res.json()).then(data => {
-        if (data.success) {
-            sessionStorage.clear();
-            loadAuthView();
-        }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'post', description: desc })
     });
 }
+
+async function hidePost(postId) {
+    await fetch(`/api/hide/${postId}`, { method: 'POST' });
+    // Remove from DOM
+}
+
+async function blockUser(userId) {
+    await fetch(`/api/block/user/${userId}`, { method: 'POST' });
+}
+
+async function followUser(userId) {
+    await fetch(`/api/follow/${userId}`, { method: 'POST' });
+}
+
+async function acceptRequest(userId) {
+    await fetch(`/api/accept_request/${userId}`, { method: 'POST' });
+    loadFriends();
+}
+
+async function declineRequest(userId) {
+    await fetch(`/api/decline_request/${userId}`, { method: 'POST' });
+    loadFriends();
+}
+
+async function messageUser(userId) {
+    openChat(userId, false);
+}
+
+// Download reel with watermark (client-side canvas)
+function downloadReel(reelId) {
+    // Fetch video, add watermark using canvas, download
+    alert('Download not implemented fully');
+}
+
+// Admin actions
+async function deleteUser(userId) {
+    await fetch(`/api/admin/delete/user/${userId}`, { method: 'POST' });
+    loadAdmin();
+}
+
+async function banUser(userId) {
+    await fetch(`/api/admin/ban/user/${userId}`, { method: 'POST' });
+}
+
+async function warnUser(userId) {
+    const msg = prompt('Warning message:');
+    await fetch(`/api/admin/warn/user/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+    });
+}
+
+// Etc. for other functions
