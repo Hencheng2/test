@@ -499,25 +499,16 @@ def api_profile(username):
     if not user:
         return 'Not found', 404
     current_user_id = session['user_id']
-    is_own = user.id == current_user_id
-    followers = Follow.query.filter_by(followed_id=user.id, status='following').count()
-    following = Follow.query.filter_by(follower_id=user.id, status='following').count()
-    friends_query = db.session.query(Follow).filter(Follow.follower_id == user.id, Follow.status == 'following').join(Follow, db.and_(Follow.followed_id == Follow.followed_id, Follow.follower_id == user.id, Follow.status == 'following'))
+    is_own_profile = user.id == current_user_id
+    posts = Post.query.filter_by(user_id=user.id).order_by(Post.created_at.desc()).limit(10).all()
+    friends_query = db.session.query(Follow).select_from(Follow).join(User, or_(Follow.follower_id == User.id, Follow.followed_id == User.id)).filter(or_(Follow.follower_id == user.id, Follow.followed_id == user.id), Follow.status == 'following')
     friends = friends_query.count()
-    posts_count = Post.query.filter_by(user_id=user.id).count()
-    if is_own:
-        posts = Post.query.filter_by(user_id=user.id).all()
-        saved = [s.post or s.reel for s in Save.query.filter_by(user_id=user.id).all()]
-        reposts = Repost.query.filter_by(user_id=user.id).all()
-        liked = [l.post or l.reel for l in Like.query.filter_by(user_id=user.id).all()]
-        reels = Reel.query.filter_by(user_id=user.id).all()
-        return render_template('profile_own_modal.html', user=user, followers=followers, following=following, friends=friends, posts_count=posts_count, posts=posts, saved=saved, reposts=reposts, liked=liked, reels=reels)
-    else:
-        posts = Post.query.filter_by(user_id=user.id).all()  # add privacy check
-        reels = Reel.query.filter_by(user_id=user.id).all()
-        mutual_friends = db.session.query(User).join(Follow, Follow.followed_id == User.id).filter(Follow.follower_id == current_user_id, Follow.status=='following').join(Follow, Follow.follower_id == User.id, Follow.followed_id == user.id, Follow.status=='following').limit(3).all()
-        return render_template('profile_other_modal.html', user=user, followers=followers, following=following, friends=friends, posts=posts, reels=reels, mutual_friends=mutual_friends)
-
+    is_friend = Follow.query.filter(or_(and_(Follow.follower_id == current_user_id, Follow.followed_id == user.id), and_(Follow.follower_id == user.id, Follow.followed_id == current_user_id)), Follow.status == 'following').first() is not None
+    is_following = Follow.query.filter_by(follower_id=current_user_id, followed_id=user.id, status='following').first() is not None
+    is_pending = Follow.query.filter_by(follower_id=current_user_id, followed_id=user.id, status='pending').first() is not None
+    stories = Story.query.filter_by(user_id=user.id).order_by(Story.created_at.desc()).limit(10).all()
+    template = 'profile_own_modal.html' if is_own_profile else 'profile_other_modal.html'
+    return render_template(template, user=user, posts=posts, friends=friends, is_friend=is_friend, is_following=is_following, is_pending=is_pending, stories=stories)
 @app.route('/api/group_profile/<int:group_id>')
 @login_required
 def api_group_profile(group_id):
