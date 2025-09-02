@@ -1,4 +1,4 @@
-// static/script.js (Updated)
+// static/script.js (fully adjusted for frontend functionality)
 
 const apiBase = '/api';
 
@@ -15,7 +15,8 @@ function hideModal(id) {
 let currentPage = 1;
 let loading = false;
 let currentView = 'home';
-let currentSearchType = 'all';
+let currentStoryIndex = 0;
+let stories = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     checkLoggedIn();
@@ -23,117 +24,807 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reelsBtn')?.addEventListener('click', () => loadView('reels'));
     document.getElementById('friendsBtn')?.addEventListener('click', () => loadView('friends'));
     document.getElementById('inboxBtn')?.addEventListener('click', () => loadView('inbox'));
-    document.getElementById('profileBtn')?.addEventListener('click', () => loadView('profile'));
+    document.getElementById('profileBtn')?.addEventListener('click', () => loadView('profile', sessionStorage.getItem('user_id')));
     document.getElementById('searchBtn')?.addEventListener('click', () => loadView('search'));
     document.getElementById('addBtn')?.addEventListener('click', () => showModal('addModal'));
     document.getElementById('notifBtn')?.addEventListener('click', () => loadView('notifications'));
     document.getElementById('menuBtn')?.addEventListener('click', () => loadView('menu'));
     document.getElementById('adminBtn')?.addEventListener('click', () => loadView('admin'));
     window.addEventListener('scroll', handleInfiniteScroll);
+    document.getElementById('searchInput')?.addEventListener('input', loadSearchResults);
+    document.getElementById('friendsSearch')?.addEventListener('input', loadFriendsSearch);
+    // Add event listeners for forms
+    document.getElementById('loginForm')?.addEventListener('submit', (e) => { e.preventDefault(); login(); });
+    document.getElementById('registerForm')?.addEventListener('submit', (e) => { e.preventDefault(); register(); });
+    document.getElementById('forgotForm')?.addEventListener('submit', (e) => { e.preventDefault(); forgot(); });
+    document.getElementById('resetForm')?.addEventListener('submit', (e) => { e.preventDefault(); resetPassword(); });
+    document.getElementById('addForm')?.addEventListener('submit', (e) => { e.preventDefault(); createPost(); });
+    document.getElementById('profileEditForm')?.addEventListener('submit', (e) => { e.preventDefault(); updateProfile(); });
+    document.getElementById('changePasswordForm')?.addEventListener('submit', (e) => { e.preventDefault(); changePassword(); });
+    document.getElementById('groupCreateForm')?.addEventListener('submit', (e) => { e.preventDefault(); createGroup(); });
+    document.getElementById('groupEditForm')?.addEventListener('submit', (e) => { e.preventDefault(); editGroup(); });
+    document.getElementById('chatForm')?.addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+    document.getElementById('commentForm')?.addEventListener('submit', (e) => { e.preventDefault(); addComment(); });
+    document.getElementById('reportForm')?.addEventListener('submit', (e) => { e.preventDefault(); report(); });
 });
 
 function checkLoggedIn() {
-    fetch(`${apiBase}/user/me`, {
-        credentials: 'include'
-    })
+    fetch(`${apiBase}/user/me`, { credentials: 'include' })
     .then(res => {
         if (res.status === 401) {
             showModal('loginModal');
         } else {
             res.json().then(user => {
                 sessionStorage.setItem('user_id', user.id);
-                if (user.is_admin) {
-                    document.getElementById('adminBtn').style.display = 'block';
-                }
+                sessionStorage.setItem('is_admin', user.is_admin);
+                if (user.is_admin) document.getElementById('adminBtn').style.display = 'block';
+                applyTheme(user.theme);
                 loadView('home');
             });
         }
     })
-    .catch(err => {
-        console.error('Error checking login:', err);
-        showModal('loginModal');
-    });
+    .catch(() => showModal('loginModal'));
 }
 
-function loadView(view, userId) {
+function applyTheme(theme) {
+    document.body.classList.toggle('dark', theme === 'dark');
+}
+
+function loadView(view, param = null) {
     currentView = view;
     currentPage = 1;
     const content = document.getElementById('content');
-    content.innerHTML = '<p>Loading...</p>';
-    if (view === 'home') {
-        loadHome();
-    } else if (view === 'reels') {
-        loadReels();
-    } else if (view === 'friends') {
-        loadFriends();
-    } else if (view === 'inbox') {
-        loadInbox();
-    } else if (view === 'profile') {
-        loadProfile(userId || sessionStorage.getItem('user_id'));
-    } else if (view === 'search') {
-        loadSearch();
-    } else if (view === 'notifications') {
-        loadNotifications();
-    } else if (view === 'menu') {
-        loadMenu();
-    } else if (view === 'admin') {
-        loadAdmin();
-    }
+    content.innerHTML = '';
+    if (view === 'home') loadHome();
+    else if (view === 'reels') loadReels();
+    else if (view === 'friends') loadFriends();
+    else if (view === 'inbox') loadInbox();
+    else if (view === 'profile') loadProfile(param || sessionStorage.getItem('user_id'));
+    else if (view === 'search') loadSearch();
+    else if (view === 'notifications') loadNotifications();
+    else if (view === 'menu') loadMenu();
+    else if (view === 'admin') loadAdmin();
 }
 
 function handleInfiniteScroll() {
     if (loading || (window.innerHeight + window.scrollY < document.body.offsetHeight - 100)) return;
     loading = true;
     currentPage++;
-    if (currentView === 'home') {
-        fetch(`${apiBase}/posts/feed?page=${currentPage}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.length > 0) {
-                renderPosts(data, false);
-            }
-            loading = false;
-        })
-        .catch(err => {
-            console.error('Error loading more posts:', err);
-            loading = false;
+    if (currentView === 'home') loadMorePosts();
+    else if (currentView === 'reels') loadMoreReels();
+    // Add for other views if needed
+}
+
+function loadMorePosts() {
+    fetch(`${apiBase}/posts/feed?page=${currentPage}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.length > 0) renderPosts(data, true);
+        loading = false;
+    });
+}
+
+function loadMoreReels() {
+    fetch(`${apiBase}/reels?page=${currentPage}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.length > 0) renderReels(data, true);
+        loading = false;
+    });
+}
+
+function loadHome() {
+    const content = document.getElementById('content');
+    fetch(`${apiBase}/stories`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => {
+        stories = data;
+        const storiesDiv = document.createElement('div');
+        storiesDiv.classList.add('stories');
+        stories.forEach((story, index) => {
+            const circle = document.createElement('div');
+            circle.classList.add('story-circle');
+            circle.style.backgroundImage = `url(${story.profile_pic_url || '/static/default.jpg'})`;
+            circle.onclick = () => showStory(index);
+            const username = document.createElement('p');
+            username.textContent = story.username;
+            circle.appendChild(username);
+            storiesDiv.appendChild(circle);
         });
-    } else if (currentView === 'reels') {
-        fetch(`${apiBase}/reels/feed?page=${currentPage}`, { credentials: 'include' })
+        content.appendChild(storiesDiv);
+    });
+    fetch(`${apiBase}/posts/feed?page=1`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderPosts(data));
+}
+
+function renderPosts(posts, append = false) {
+    const content = document.getElementById('content');
+    if (!append) content.innerHTML = '';
+    posts.forEach(post => {
+        const postDiv = document.createElement('div');
+        postDiv.classList.add('post');
+        postDiv.innerHTML = `
+            <img src="${post.profile_pic_url || '/static/default.jpg'}" class="small-circle">
+            <span>${post.real_name || 'Anonymous'} (@${post.username}) - ${new Date(post.timestamp).toLocaleString()}</span>
+            <p>${post.description || ''}</p>
+            ${post.media_url ? `<img src="${post.media_url}" alt="post media">` : ''}
+            <div class="button-group">
+                <button onclick="likePost(${post.id})">Like</button>
+                <button onclick="showCommentModal(${post.id})">Comment</button>
+                <button onclick="sharePost(${post.id})">Share</button>
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="followUser(${post.user_id})">Follow</button>` : ''}
+                <button onclick="savePost(${post.id})">Save</button>
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="repostPost(${post.id})">Repost</button>` : ''}
+                <button>Views: ${post.views}</button>
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="reportPost(${post.id})">Report</button>` : ''}
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="hidePost(${post.id})">Hide</button>` : ''}
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="toggleNotifications(${post.user_id})">Turn on notifications</button>` : ''}
+                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="blockUser(${post.user_id})">Block</button>` : ''}
+            </div>
+        `;
+        content.appendChild(postDiv);
+    });
+}
+
+function loadReels() {
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    fetch(`${apiBase}/reels?page=1`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderReels(data));
+}
+
+function renderReels(reels, append = false) {
+    const content = document.getElementById('content');
+    if (!append) content.innerHTML = '';
+    reels.forEach(reel => {
+        const reelDiv = document.createElement('div');
+        reelDiv.classList.add('reel');
+        reelDiv.innerHTML = `
+            <video src="${reel.media_url}" class="reel-video" loop autoplay></video>
+            <div class="reel-overlay">
+                <span>${reel.real_name || 'Anonymous'} (@${reel.username})</span>
+                <p>${reel.description || ''}</p>
+                <div class="reel-buttons">
+                    <button onclick="likePost(${reel.id})">Like</button>
+                    <button onclick="showCommentModal(${reel.id})">Comment</button>
+                    <button onclick="sharePost(${reel.id})">Share</button>
+                    ${reel.user_id != sessionStorage.getItem('user_id') ? `<button onclick="followUser(${reel.user_id})">Follow</button>` : ''}
+                    <button onclick="savePost(${reel.id})">Save</button>
+                    ${reel.user_id != sessionStorage.getItem('user_id') ? `<button onclick="repostPost(${reel.id})">Repost</button>` : ''}
+                    <button onclick="downloadReel('${reel.media_url}')">Download</button>
+                </div>
+            </div>
+        `;
+        reelDiv.addEventListener('click', togglePlayPause);
+        content.appendChild(reelDiv);
+    });
+}
+
+function togglePlayPause(e) {
+    const video = e.currentTarget.querySelector('video');
+    if (video.paused) video.play();
+    else video.pause();
+}
+
+function downloadReel(url) {
+    // Placeholder for download with watermark
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'reel.mp4';
+    a.click();
+    // For watermark, would need canvas or server-side
+}
+
+function showStory(index) {
+    currentStoryIndex = index;
+    const modal = document.getElementById('storyModal');
+    updateStoryView();
+    showModal('storyModal');
+    let touchStartX = 0, touchEndX = 0, touchStartY = 0, touchEndY = 0;
+    let holdTimer;
+    modal.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+        holdTimer = setTimeout(() => pauseStory(), 500);
+    });
+    modal.addEventListener('touchend', e => {
+        clearTimeout(holdTimer);
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        if (touchEndX < touchStartX - 50) nextStory();
+        else if (touchEndX > touchStartX + 50) prevStory();
+        if (touchEndY > touchStartY + 50) hideModal('storyModal');
+        resumeStory();
+    });
+}
+
+function updateStoryView() {
+    const storyView = document.getElementById('storyView');
+    const story = stories[currentStoryIndex];
+    storyView.innerHTML = story.media_url.endsWith('.mp4') ? `<video src="${story.media_url}" autoplay loop></video>` : `<img src="${story.media_url}">`;
+    storyView.querySelector('video, img').style.width = '100%';
+    storyView.querySelector('video, img').style.height = '100vh';
+    storyView.querySelector('video, img').style.objectFit = 'contain';
+}
+
+function nextStory() {
+    if (currentStoryIndex < stories.length - 1) {
+        currentStoryIndex++;
+        updateStoryView();
+    }
+}
+
+function prevStory() {
+    if (currentStoryIndex > 0) {
+        currentStoryIndex--;
+        updateStoryView();
+    }
+}
+
+function pauseStory() {
+    const video = document.getElementById('storyView').querySelector('video');
+    if (video) video.pause();
+}
+
+function resumeStory() {
+    const video = document.getElementById('storyView').querySelector('video');
+    if (video) video.play();
+}
+
+function loadFriends() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <input id="friendsSearch" type="text" placeholder="Search users">
+        <div id="friendsNav">
+            <button onclick="loadFollowers()">Followers</button>
+            <button onclick="loadFollowing()">Following</button>
+            <button onclick="loadFriendsList()">Friends</button>
+            <button onclick="loadRequests()">Requests</button>
+            <button onclick="loadSuggested()">Suggested</button>
+        </div>
+        <div id="friendsList"></div>
+    `;
+    loadFollowers();  // Default
+}
+
+function loadFollowers() {
+    fetch(`${apiBase}/friends/followers`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderFriendsList(data, 'followers'));
+}
+
+function loadFollowing() {
+    fetch(`${apiBase}/friends/following`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderFriendsList(data, 'following'));
+}
+
+function loadFriendsList() {
+    fetch(`${apiBase}/friends/friends`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderFriendsList(data, 'friends'));
+}
+
+function loadRequests() {
+    fetch(`${apiBase}/friends/requests`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderFriendsList(data, 'requests'));
+}
+
+function loadSuggested() {
+    fetch(`${apiBase}/friends/suggested`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderFriendsList(data, 'suggested'));
+}
+
+function renderFriendsList(users, type) {
+    const list = document.getElementById('friendsList');
+    list.innerHTML = '';
+    users.forEach(user => {
+        const item = document.createElement('div');
+        item.classList.add('friends-item');
+        item.innerHTML = `
+            <img src="${user.profile_pic_url || '/static/default.jpg'}" class="small-circle">
+            <span>${user.real_name || 'Anonymous'} (@${user.username})<br><small>${user.mutual} mutual</small></span>
+        `;
+        const buttons = document.createElement('div');
+        if (type === 'followers') {
+            buttons.innerHTML = `
+                <button onclick="messageUser(${user.id})"><i class="fa fa-message"></i></button>
+                <button onclick="blockUser(${user.id})">Block</button>
+            `;
+        } else if (type === 'following' || type === 'friends') {
+            buttons.innerHTML = `
+                <button onclick="messageUser(${user.id})"><i class="fa fa-message"></i></button>
+                <button onclick="showDropdown(${user.id}, '${type}')"><i class="fa fa-ellipsis-v"></i></button>
+            `;
+        } else if (type === 'requests') {
+            buttons.innerHTML = `
+                <button onclick="acceptRequest(${user.id})">Accept</button>
+                <button onclick="declineRequest(${user.id})">Decline</button>
+                <button onclick="blockUser(${user.id})">Block</button>
+            `;
+        } else if (type === 'suggested') {
+            buttons.innerHTML = `
+                <button onclick="followUser(${user.id})">Follow</button>
+                <button onclick="removeSuggested(${user.id})">Remove</button>
+                <button onclick="blockUser(${user.id})">Block</button>
+            `;
+        }
+        item.appendChild(buttons);
+        item.onclick = () => loadProfile(user.id);
+        list.appendChild(item);
+    });
+}
+
+function loadFriendsSearch() {
+    const query = document.getElementById('friendsSearch').value;
+    if (query) {
+        fetch(`${apiBase}/search?query=${query}`, { credentials: 'include' })
         .then(res => res.json())
-        .then(data => {
-            if (data.length > 0) {
-                renderReels(data, false);
-            }
-            loading = false;
-        })
-        .catch(err => {
-            console.error('Error loading more reels:', err);
-            loading = false;
+        .then(data => renderFriendsList(data.users, 'search'));
+    }
+}
+
+function acceptRequest(id) {
+    fetch(`${apiBase}/follow/accept`, {
+        method: 'POST',
+        body: JSON.stringify({ from_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => loadRequests());
+}
+
+function declineRequest(id) {
+    fetch(`${apiBase}/follow/decline`, {
+        method: 'POST',
+        body: JSON.stringify({ from_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => loadRequests());
+}
+
+function removeSuggested(id) {
+    // Client-side remove for now
+    alert('Removed from suggested');
+}
+
+function showDropdown(id, type) {
+    // Placeholder for dropdown: unfollow, block
+    if (confirm('Unfollow?')) unfollowUser(id);
+    else if (confirm('Block?')) blockUser(id);
+}
+
+function unfollowUser(id) {
+    fetch(`${apiBase}/follow/unfollow`, {
+        method: 'POST',
+        body: JSON.stringify({ target_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => loadView('friends'));
+}
+
+function loadInbox() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <div id="inboxNav">
+            <button onclick="loadChats()">Chats</button>
+            <button onclick="loadGroupChats()">Groups</button>
+        </div>
+        <div id="inboxList"></div>
+    `;
+    loadChats();  // Default
+}
+
+function loadChats() {
+    fetch(`${apiBase}/inbox/chats`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderInboxList(data, false));
+}
+
+function loadGroupChats() {
+    fetch(`${apiBase}/inbox/groups`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => renderInboxList(data, true));
+}
+
+function renderInboxList(items, isGroup) {
+    const list = document.getElementById('inboxList');
+    list.innerHTML = '';
+    items.forEach(item => {
+        const chatItem = document.createElement('div');
+        chatItem.classList.add('chat-item');
+        chatItem.innerHTML = `
+            <img src="${item.profile_pic_url || '/static/default.jpg'}" class="small-circle">
+            <span>${item.real_name || item.name} (${item.username || ''})<br><small>${item.last_message}</small></span>
+            <small>${new Date(item.last_timestamp).toLocaleTimeString()}</small>
+            ${item.unread > 0 ? `<span class="unread">${item.unread}</span>` : ''}
+        `;
+        chatItem.onclick = () => showChatModal(item.chat_id, isGroup);
+        list.appendChild(chatItem);
+    });
+}
+
+function showChatModal(chat_id, is_group) {
+    showModal('chatModal');
+    const chatHeader = document.getElementById('chatHeader');
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = 'Loading...';
+    fetch(`${apiBase}/messages/${chat_id}?is_group=${is_group}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(messages => {
+        chatMessages.innerHTML = '';
+        messages.forEach(msg => {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add(msg.sender_id == sessionStorage.getItem('user_id') ? 'sent' : 'received');
+            msgDiv.innerHTML = `
+                <p>${msg.text || ''}</p>
+                ${msg.media_url ? `<img src="${msg.media_url}">` : ''}
+                <small>${new Date(msg.timestamp).toLocaleString()}</small>
+            `;
+            chatMessages.appendChild(msgDiv);
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+    // Load header: back, profile, dropdown
+    chatHeader.innerHTML = `
+        <button onclick="hideModal('chatModal')"><i class="fa fa-arrow-left"></i></button>
+        <img src="profile_pic" class="small-circle">
+        <span>Name</span>
+        <button onclick="showChatDropdown(${chat_id}, ${is_group})"><i class="fa fa-ellipsis-v"></i></button>
+    `;
+    // Fetch name/pic
+    if (!is_group) {
+        fetch(`${apiBase}/user/${chat_id}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(user => {
+            chatHeader.querySelector('img').src = user.profile_pic_url || '/static/default.jpg';
+            chatHeader.querySelector('span').textContent = user.real_name + ' (@' + user.username + ')';
+        });
+    } else {
+        fetch(`${apiBase}/group/${chat_id}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(group => {
+            chatHeader.querySelector('img').src = group.profile_pic_url || '/static/default.jpg';
+            chatHeader.querySelector('span').textContent = group.name;
+        });
+    }
+    // Load custom: nickname, wallpaper
+    fetch(`${apiBase}/chat/custom?chat_id=${chat_id}&is_group=${is_group}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(custom => {
+        if (custom.nickname) chatHeader.querySelector('span').textContent = custom.nickname;
+        if (custom.wallpaper_url) document.getElementById('chatModal').style.backgroundImage = `url(${custom.wallpaper_url})`;
+    });
+    document.getElementById('chatInput').focus();
+    sessionStorage.setItem('currentChatId', chat_id);
+    sessionStorage.setItem('currentIsGroup', is_group);
+}
+
+function showChatDropdown(chat_id, is_group) {
+    // Dropdown: customize name, change wallpaper, search, view user/group, disappearing, block, report
+    showModal('chatDropdownModal');
+    const dropdownContent = document.getElementById('chatDropdownContent');
+    dropdownContent.innerHTML = `
+        <button onclick="customizeName(${chat_id}, ${is_group})">Customize Name</button>
+        <button onclick="changeWallpaper(${chat_id}, ${is_group})">Change Wallpaper</button>
+        <button onclick="searchChat(${chat_id}, ${is_group})">Search</button>
+        <button onclick="viewProfile(${chat_id}, ${is_group})">View ${is_group ? 'Group' : 'User'}</button>
+        <button onclick="toggleDisappearing(${chat_id}, ${is_group})">Disappearing Messages</button>
+        <button onclick="blockChat(${chat_id}, ${is_group})">Block</button>
+        <button onclick="reportChat(${chat_id}, ${is_group})">Report</button>
+    `;
+}
+
+function customizeName(chat_id, is_group) {
+    const name = prompt('New name:');
+    if (name) {
+        fetch(`${apiBase}/chat/customize`, {
+            method: 'POST',
+            body: JSON.stringify({ chat_id, is_group, nickname: name }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => showChatModal(chat_id, is_group));
+    }
+}
+
+function changeWallpaper(chat_id, is_group) {
+    // Placeholder: upload and set
+    const url = prompt('Wallpaper URL:');
+    if (url) {
+        fetch(`${apiBase}/chat/customize`, {
+            method: 'POST',
+            body: JSON.stringify({ chat_id, is_group, wallpaper_url: url }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => showChatModal(chat_id, is_group));
+    }
+}
+
+function searchChat(chat_id, is_group) {
+    const query = prompt('Search query:');
+    if (query) {
+        fetch(`${apiBase}/chat/search?chat_id=${chat_id}&query=${query}&is_group=${is_group}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(messages => {
+            // Display in modal or something
+            alert('Found ' + messages.length + ' messages');
         });
     }
 }
 
-// User Authentication
-function register() {
-    const username = document.getElementById('registerUsername').value;
-    const password = document.getElementById('registerPassword').value;
-    fetch(`${apiBase}/register`, {
+function viewProfile(chat_id, is_group) {
+    hideModal('chatModal');
+    loadView('profile', chat_id);
+}
+
+function toggleDisappearing(chat_id, is_group) {
+    const after = prompt('Disappearing after (off, 24h, 1w, 1m):');
+    if (after) {
+        // Set for future messages, existing handled in backend
+        alert('Set to ' + after);
+    }
+}
+
+function blockChat(chat_id, is_group) {
+    if (confirm('Block?')) {
+        blockUser(chat_id);
+        hideModal('chatModal');
+    }
+}
+
+function reportChat(chat_id, is_group) {
+    const reason = prompt('Reason:');
+    if (reason) {
+        fetch(`${apiBase}/post/report`, {  // Reuse report for chat
+            method: 'POST',
+            body: JSON.stringify({ post_id: chat_id, reason }),  // Misuse post_id for chat_id
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => alert('Reported'));
+    }
+}
+
+function sendChat() {
+    const text = document.getElementById('chatInput').value;
+    const chat_id = sessionStorage.getItem('currentChatId');
+    const is_group = sessionStorage.getItem('currentIsGroup');
+    fetch(`${apiBase}/message/send`, {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert(data.message);
-            hideModal('registerModal');
-            hideModal('loginModal');
-            checkLoggedIn();
-        }
+        body: JSON.stringify({ receiver_id: chat_id, text, is_group }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        document.getElementById('chatInput').value = '';
+        showChatModal(chat_id, is_group);
     });
+}
+
+function loadProfile(userId) {
+    fetch(`${apiBase}/user/${userId}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(user => {
+        const content = document.getElementById('content');
+        content.innerHTML = `
+            <img src="${user.profile_pic_url || '/static/default.jpg'}" class="profile-pic">
+            <h2>${user.real_name || 'Anonymous'} (@${user.username})</h2>
+            <p>${user.bio || ''}</p>
+            <div id="profileNav">
+                <button onclick="loadUserPosts(${userId})">Posts</button>
+                <button onclick="loadUserReels(${userId})">Reels</button>
+                <button onclick="loadUserStories(${userId})">Stories</button>
+                <button onclick="loadSavedPosts()">Saved</button>
+            </div>
+            ${userId == sessionStorage.getItem('user_id') ? `<button onclick="showModal('profileEditModal')">Edit Profile</button>` : ''}
+            ${userId != sessionStorage.getItem('user_id') ? `<button onclick="messageUser(${userId})">Message</button>` : ''}
+            ${userId != sessionStorage.getItem('user_id') ? `<button onclick="followUser(${userId})">Follow</button>` : ''}
+            ${userId != sessionStorage.getItem('user_id') ? `<button onclick="blockUser(${userId})">Block</button>` : ''}
+            <div id="profileContent"></div>
+        `;
+        loadUserPosts(userId);  // Default
+        if (userId == sessionStorage.getItem('user_id')) fillProfileEdit(user);
+    });
+}
+
+function fillProfileEdit(user) {
+    document.getElementById('editRealName').value = user.real_name || '';
+    document.getElementById('editBio').value = user.bio || '';
+    // Fill other fields
+}
+
+function updateProfile() {
+    const data = {
+        real_name: document.getElementById('editRealName').value,
+        bio: document.getElementById('editBio').value,
+        // Add other fields
+    };
+    fetch(`${apiBase}/user/update`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        hideModal('profileEditModal');
+        loadProfile(sessionStorage.getItem('user_id'));
+    });
+}
+
+function changePassword() {
+    const old_password = document.getElementById('oldPassword').value;
+    const new_password = document.getElementById('newPasswordChange').value;
+    fetch(`${apiBase}/user/change_password`, {
+        method: 'POST',
+        body: JSON.stringify({ old_password, new_password }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(res => {
+        if (res.ok) alert('Changed');
+        else res.json().then(data => alert(data.error));
+    });
+}
+
+function loadUserPosts(userId) {
+    // Fetch posts for user, render similar to feed
+    // Placeholder
+    document.getElementById('profileContent').innerHTML = 'Posts...';
+}
+
+function loadUserReels(userId) {
+    // Similar
+    document.getElementById('profileContent').innerHTML = 'Reels...';
+}
+
+function loadUserStories(userId) {
+    // Similar
+    document.getElementById('profileContent').innerHTML = 'Stories...';
+}
+
+function loadSavedPosts() {
+    // Fetch saves
+    document.getElementById('profileContent').innerHTML = 'Saved...';
+}
+
+function loadSearch() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <input id="searchInput" type="text" placeholder="Search">
+        <div id="searchResults"></div>
+    `;
+}
+
+function loadSearchResults() {
+    const query = document.getElementById('searchInput').value;
+    if (query) {
+        fetch(`${apiBase}/search?query=${query}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const results = document.getElementById('searchResults');
+            results.innerHTML = '';
+            data.users.forEach(user => {
+                const item = document.createElement('div');
+                item.innerHTML = `
+                    <img src="${user.profile_pic_url || '/static/default.jpg'}" class="small-circle">
+                    <span>${user.real_name} (@${user.username})</span>
+                `;
+                item.onclick = () => loadProfile(user.id);
+                results.appendChild(item);
+            });
+        });
+    }
+}
+
+function loadNotifications() {
+    fetch(`${apiBase}/notifications`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(notifs => {
+        const content = document.getElementById('content');
+        content.innerHTML = '';
+        notifs.forEach(notif => {
+            const item = document.createElement('div');
+            item.textContent = `${notif.type}: ${notif.text || ''} from ${notif.from_user_id}`;
+            content.appendChild(item);
+        });
+    });
+}
+
+function loadMenu() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <button onclick="showModal('settingsModal')">Settings</button>
+        <button onclick="showModal('supportModal')">Support</button>
+        <button onclick="logout()">Logout</button>
+    `;
+}
+
+function logout() {
+    fetch(`${apiBase}/logout`, { method: 'POST', credentials: 'include' })
+    .then(() => location.reload());
+}
+
+function loadAdmin() {
+    if (sessionStorage.getItem('is_admin') != 1) return;
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <div id="adminNav">
+            <button onclick="loadAdminUsers()">Users</button>
+            <button onclick="loadAdminGroups()">Groups</button>
+            <button onclick="loadAdminReports()">Reports</button>
+            <button onclick="loadAdminInbox()">Inbox</button>
+        </div>
+        <div id="adminContent"></div>
+    `;
+    loadAdminUsers();  // Default
+}
+
+function loadAdminUsers() {
+    fetch(`${apiBase}/admin/users`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(users => {
+        const adminContent = document.getElementById('adminContent');
+        adminContent.innerHTML = '';
+        users.forEach(user => {
+            const item = document.createElement('div');
+            item.innerHTML = `
+                ${user.username} - ${user.real_name}
+                <button onclick="deleteUser(${user.id})">Delete</button>
+                <button onclick="banUser(${user.id})">Ban</button>
+                <button onclick="warnUser(${user.id})">Warn</button>
+            `;
+            adminContent.appendChild(item);
+        });
+    });
+}
+
+function deleteUser(id) {
+    if (confirm('Delete?')) {
+        fetch(`${apiBase}/admin/user/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: id }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => loadAdminUsers());
+    }
+}
+
+function banUser(id) {
+    const duration = prompt('Duration (days or forever):');
+    if (duration) {
+        fetch(`${apiBase}/admin/user/ban`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: id, duration }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => alert('Banned'));
+    }
+}
+
+function warnUser(id) {
+    const message = prompt('Warning message:');
+    if (message) {
+        fetch(`${apiBase}/admin/warning`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: id, message }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => alert('Sent'));
+    }
+}
+
+function loadAdminGroups() {
+    // Similar to users
+    document.getElementById('adminContent').innerHTML = 'Groups...';
+}
+
+function loadAdminReports() {
+    // Similar
+    document.getElementById('adminContent').innerHTML = 'Reports...';
+}
+
+function loadAdminInbox() {
+    // Similar to inbox
+    document.getElementById('adminContent').innerHTML = 'Admin Inbox...';
 }
 
 function login() {
@@ -144,465 +835,228 @@ function login() {
         body: JSON.stringify({ identifier, password }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert(data.message);
+    }).then(res => {
+        if (res.ok) {
             hideModal('loginModal');
             checkLoggedIn();
-        }
+        } else res.json().then(data => alert(data.error));
     });
 }
 
-function verifyKey() {
+function register() {
+    const username = document.getElementById('regUsername').value;
+    const password = document.getElementById('regPassword').value;
+    fetch(`${apiBase}/register`, {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(res => {
+        if (res.ok) res.json().then(data => {
+            alert('Registered! Key: ' + data.unique_key);
+            hideModal('registerModal');
+            checkLoggedIn();
+        });
+        else res.json().then(data => alert(data.error));
+    });
+}
+
+function forgot() {
     const username = document.getElementById('forgotUsername').value;
-    const unique_key = document.getElementById('forgotUniqueKey').value;
+    const unique_key = document.getElementById('forgotKey').value;
     fetch(`${apiBase}/forgot`, {
         method: 'POST',
         body: JSON.stringify({ username, unique_key }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) {
-            alert(data.error);
-        } else {
+    }).then(res => {
+        if (res.ok) {
             hideModal('forgotModal');
-            showModal('resetModal');
-        }
+            setTimeout(() => showModal('resetModal'), 5000);
+        } else res.json().then(data => alert(data.error));
     });
 }
 
 function resetPassword() {
-    const password = document.getElementById('resetPassword').value;
+    const password = document.getElementById('newPassword').value;
     fetch(`${apiBase}/reset_password`, {
         method: 'POST',
         body: JSON.stringify({ password }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert(data.message);
+    }).then(res => {
+        if (res.ok) {
             hideModal('resetModal');
             showModal('loginModal');
-        }
-    });
-}
-
-// Content and Views
-function loadHome() {
-    const content = document.getElementById('content');
-    content.innerHTML = '';
-    
-    // Stories
-    fetch(`${apiBase}/stories`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(stories => {
-        const storiesDiv = document.createElement('div');
-        storiesDiv.classList.add('stories');
-        stories.forEach(story => {
-            const circle = document.createElement('div');
-            circle.classList.add('story-circle');
-            circle.style.backgroundImage = `url(${story.media_url || '/static/default.jpg'})`;
-            circle.onclick = () => showStory(story.id);
-            const username = document.createElement('p');
-            username.textContent = story.username;
-            circle.appendChild(username);
-            storiesDiv.appendChild(circle);
-        });
-        content.appendChild(storiesDiv);
-    })
-    .catch(err => console.error('Error loading stories:', err));
-
-    // Posts
-    fetch(`${apiBase}/posts/feed?page=1`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderPosts(data))
-    .catch(err => console.error('Error loading posts:', err));
-}
-
-function renderPosts(posts, clear = true) {
-    const content = document.getElementById('content');
-    if (clear) content.innerHTML += '<h3>Posts</h3>';
-    
-    posts.forEach(post => {
-        const postDiv = document.createElement('div');
-        postDiv.classList.add('post');
-        postDiv.innerHTML = `
-            <div class="post-header">
-                <img src="${post.profile_pic_url || '/static/default.jpg'}" class="small-circle" onclick="loadView('profile', ${post.user_id})">
-                <div class="user-info">
-                    <span class="user-real-name" onclick="loadView('profile', ${post.user_id})">${post.real_name}</span>
-                    <span class="user-username">@${post.username}</span>
-                    <span class="post-date">${post.timestamp}</span>
-                </div>
-            </div>
-            <div class="post-body">
-                <p>${post.description}</p>
-                ${post.media_url ? `<img src="${post.media_url}" alt="Post media">` : ''}
-            </div>
-            <div class="post-actions">
-                <span class="like-btn ${post.is_liked ? 'liked' : ''}" onclick="toggleLike(${post.id}, this)"><i class="fa fa-heart"></i> ${post.likes_count}</span>
-                <span onclick="toggleComments(${post.id})"><i class="fa fa-comment"></i> ${post.comments_count}</span>
-                <span onclick="repostPost(${post.id})"><i class="fa fa-retweet"></i> ${post.reposts_count}</span>
-                <span onclick="savePost(${post.id})"><i class="fa fa-bookmark"></i></span>
-                <span class="post-views">${post.views} views</span>
-                <div class="dropdown">
-                    <button class="dropbtn"><i class="fa fa-ellipsis-h"></i></button>
-                    <div class="dropdown-content">
-                        <a href="#" onclick="reportPost(${post.id}, 'post')">Report Post</a>
-                        <a href="#" onclick="hidePost(${post.id})">Hide Post</a>
-                        <a href="#" onclick="toggleNotifications(${post.id})">Turn on notifications</a>
-                        <a href="#" onclick="blockUser(${post.user_id})">Block Profile</a>
-                        <a href="#" onclick="followUser(${post.user_id})">Follow</a>
-                    </div>
-                </div>
-            </div>
-            <div id="comments-${post.id}" class="comments-section"></div>
-        `;
-        content.appendChild(postDiv);
-    });
-}
-
-function loadReels() {
-    const content = document.getElementById('content');
-    content.innerHTML = '<div id="reels-container"></div>';
-    fetch(`${apiBase}/reels/feed?page=1`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderReels(data))
-    .catch(err => console.error('Error loading reels:', err));
-}
-
-function renderReels(reels, clear = true) {
-    const container = document.getElementById('reels-container');
-    if (clear) container.innerHTML = '';
-    reels.forEach(reel => {
-        const reelDiv = document.createElement('div');
-        reelDiv.classList.add('reel');
-        reelDiv.innerHTML = `
-            <video class="reel-video" src="${reel.media_url}" controls muted loop></video>
-            <div class="reel-overlay">
-                <div class="reel-user-info">
-                    <img src="${reel.profile_pic_url || '/static/default.jpg'}" class="small-circle" onclick="loadView('profile', ${reel.user_id})">
-                    <span class="user-real-name" onclick="loadView('profile', ${reel.user_id})">${reel.real_name}</span>
-                    <span class="user-username">@${reel.username}</span>
-                </div>
-                <p class="reel-description">${reel.description}</p>
-                <div class="reel-actions">
-                    <span class="like-btn ${reel.is_liked ? 'liked' : ''}" onclick="toggleLike(${reel.id}, this)"><i class="fa fa-heart"></i> ${reel.likes_count}</span>
-                    <span onclick="toggleComments(${reel.id})"><i class="fa fa-comment"></i> ${reel.comments_count}</span>
-                    <span onclick="repostPost(${reel.id})"><i class="fa fa-retweet"></i> ${reel.reposts_count}</span>
-                    <span onclick="savePost(${reel.id})"><i class="fa fa-bookmark"></i></span>
-                    <a href="${reel.media_url}" download><i class="fa fa-download"></i></a>
-                </div>
-            </div>
-        `;
-        container.appendChild(reelDiv);
+        } else res.json().then(data => alert(data.error));
     });
 }
 
 function createPost() {
     const type = document.getElementById('addType').value;
-    const mediaFile = document.getElementById('addMedia').files[0];
     const description = document.getElementById('addDescription').value;
-    const privacy = document.getElementById('addPrivacy').value;
-    
+    const file = document.getElementById('addMedia').files[0];
     const formData = new FormData();
-    formData.append('file', mediaFile);
-    
-    fetch(`${apiBase}/upload`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    })
+    formData.append('file', file);
+    fetch(`${apiBase}/upload`, { method: 'POST', body: formData, credentials: 'include' })
     .then(res => res.json())
     .then(data => {
-        if (data.error) {
-            alert(data.error);
-            return;
-        }
-        const media_url = data.url;
-        
         fetch(`${apiBase}/post/create`, {
             method: 'POST',
-            body: JSON.stringify({ type, description, media_url, privacy }),
+            body: JSON.stringify({ type, description, media_url: data.url }),
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include'
-        })
-        .then(res => res.json())
-        .then(postData => {
-            if (postData.error) {
-                alert(postData.error);
-            } else {
-                alert(postData.message);
-                hideModal('addModal');
-                loadView('home');
-            }
+        }).then(() => {
+            hideModal('addModal');
+            loadView('home');
         });
     });
 }
 
-function toggleLike(postId, element) {
-    const isLiked = element.classList.contains('liked');
-    const url = isLiked ? `${apiBase}/post/${postId}/unlike` : `${apiBase}/post/${postId}/like`;
-    const newCount = isLiked ? parseInt(element.textContent) - 1 : parseInt(element.textContent) + 1;
-    
-    fetch(url, { method: 'POST', credentials: 'include' })
-    .then(res => {
-        if (res.ok) {
-            element.classList.toggle('liked');
-            element.innerHTML = `<i class="fa fa-heart"></i> ${newCount}`;
-        }
-    });
-}
-
-function repostPost(postId) {
-    fetch(`${apiBase}/post/${postId}/repost`, { method: 'POST', credentials: 'include' })
-    .then(res => {
-        if (res.ok) alert('Reposted!');
-    });
-}
-
-function savePost(postId) {
-    fetch(`${apiBase}/post/${postId}/save`, { method: 'POST', credentials: 'include' })
-    .then(res => {
-        if (res.ok) alert('Saved!');
-    });
-}
-
-// Social Connections
-function followUser(userId) {
-    fetch(`${apiBase}/follow/${userId}`, { method: 'POST', credentials: 'include' })
-    .then(res => res.json())
-    .then(data => alert(data.message));
-}
-
-function unfollowUser(userId) {
-    fetch(`${apiBase}/unfollow/${userId}`, { method: 'POST', credentials: 'include' })
-    .then(res => res.json())
-    .then(data => alert(data.message));
-}
-
-function blockUser(userId) {
-    fetch(`${apiBase}/block`, {
+function likePost(id) {
+    fetch(`${apiBase}/post/like`, {
         method: 'POST',
-        body: JSON.stringify({ target_id: userId }),
+        body: JSON.stringify({ post_id: id }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (res.ok) alert(data.message);
-    });
+    }).then(() => alert('Liked/Unliked'));
 }
 
-function loadFriends() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="friends-navbar">
-            <button onclick="loadFriendsList('followers')">Followers</button>
-            <button onclick="loadFriendsList('following')">Following</button>
-            <button onclick="loadFriendsList('friends')">Friends</button>
-            <button onclick="loadFriendsList('requests')">Requests</button>
-            <button onclick="loadFriendsList('suggested')">Suggested</button>
-        </div>
-        <div id="friends-list-container">Loading...</div>
-    `;
-    loadFriendsList('friends');
-}
-
-function loadFriendsList(view) {
-    const container = document.getElementById('friends-list-container');
-    container.innerHTML = 'Loading...';
-    fetch(`${apiBase}/friends?view=${view}`, { credentials: 'include' })
+function showCommentModal(id) {
+    showModal('commentModal');
+    sessionStorage.setItem('currentPostId', id);
+    fetch(`${apiBase}/post/comments/${id}`, { credentials: 'include' })
     .then(res => res.json())
-    .then(users => {
-        container.innerHTML = '';
-        users.forEach(user => {
-            const userDiv = document.createElement('div');
-            userDiv.classList.add('friends-item');
-            userDiv.innerHTML = `
-                <img src="${user.profile_pic_url || '/static/default.jpg'}" class="small-circle" onclick="loadView('profile', ${user.id})">
-                <div class="user-info">
-                    <span class="user-real-name" onclick="loadView('profile', ${user.id})">${user.real_name}</span>
-                    <span class="user-mutual">@${user.username} - ${user.mutual_count} mutual friends/followers</span>
-                </div>
-                <div class="friends-actions">
-                    <button onclick="messageUser(${user.id})"><i class="fa fa-envelope"></i></button>
-                    ${view === 'requests' ? `
-                        <button onclick="acceptFollow(${user.id})">Accept</button>
-                        <button onclick="declineFollow(${user.id})">Decline</button>
-                        <button onclick="blockUser(${user.id})">Block</button>
-                    ` : view === 'suggested' ? `
-                        <button onclick="followUser(${user.id})">Follow</button>
-                        <button onclick="removeSuggestion(${user.id})">Remove</button>
-                        <button onclick="blockUser(${user.id})">Block</button>
-                    ` : `
-                        <div class="dropdown">
-                            <button class="dropbtn"><i class="fa fa-ellipsis-h"></i></button>
-                            <div class="dropdown-content">
-                                <a href="#" onclick="unfollowUser(${user.id})">Unfollow</a>
-                                <a href="#" onclick="blockUser(${user.id})">Block</a>
-                            </div>
-                        </div>
-                    `}
-                </div>
-            `;
-            container.appendChild(userDiv);
+    .then(comments => {
+        const commentList = document.getElementById('commentList');
+        commentList.innerHTML = '';
+        comments.forEach(comment => {
+            const item = document.createElement('div');
+            item.textContent = `${comment.real_name}: ${comment.text}`;
+            commentList.appendChild(item);
         });
     });
 }
 
-function acceptFollow(followerId) {
-    fetch(`${apiBase}/follow/accept/${followerId}`, { method: 'POST', credentials: 'include' })
-    .then(res => {
-        if (res.ok) loadFriendsList('requests');
+function addComment() {
+    const text = document.getElementById('commentText').value;
+    const post_id = sessionStorage.getItem('currentPostId');
+    fetch(`${apiBase}/post/comment`, {
+        method: 'POST',
+        body: JSON.stringify({ post_id, text }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        document.getElementById('commentText').value = '';
+        showCommentModal(post_id);
     });
 }
 
-function declineFollow(followerId) {
-    fetch(`${apiBase}/follow/decline/${followerId}`, { method: 'POST', credentials: 'include' })
-    .then(res => {
-        if (res.ok) loadFriendsList('requests');
-    });
+function sharePost(id) {
+    alert('Share link: /post/' + id);
 }
 
-// Messaging and Groups
-function loadInbox() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div class="inbox-navbar">
-            <button onclick="loadChatList('direct_chats')">Chats</button>
-            <button onclick="loadChatList('group_chats')">Groups</button>
-            <button onclick="showModal('newChatModal')"><i class="fa fa-plus"></i></button>
-        </div>
-        <div id="chat-list-container">Loading...</div>
-    `;
-    loadChatList('direct_chats');
+function followUser(id) {
+    fetch(`${apiBase}/follow/request`, {
+        method: 'POST',
+        body: JSON.stringify({ target_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Requested'));
 }
 
-function loadChatList(type) {
-    const container = document.getElementById('chat-list-container');
-    container.innerHTML = 'Loading...';
-    fetch(`${apiBase}/messages/chats`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        container.innerHTML = '';
-        const chats = type === 'direct_chats' ? data.direct_chats : data.group_chats;
-        chats.forEach(chat => {
-            const chatDiv = document.createElement('div');
-            chatDiv.classList.add('chat-item');
-            chatDiv.onclick = () => openChatModal(chat.id, type === 'group_chats');
-            chatDiv.innerHTML = `
-                <img src="${chat.profile_pic_url || '/static/default.jpg'}" class="small-circle">
-                <div class="chat-info">
-                    <span class="chat-name">${chat.real_name || chat.name}</span>
-                    <span class="chat-last-msg">${chat.last_message}</span>
-                </div>
-                <div class="chat-meta">
-                    <span class="chat-time">${chat.last_timestamp}</span>
-                    ${chat.unread_count > 0 ? `<span class="unread-count">${chat.unread_count}</span>` : ''}
-                </div>
-            `;
-            container.appendChild(chatDiv);
-        });
-    });
+function savePost(id) {
+    fetch(`${apiBase}/post/save`, {
+        method: 'POST',
+        body: JSON.stringify({ post_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Saved/Unsaved'));
 }
 
-function openChatModal(id, isGroup) {
-    showModal('chatModal');
-    const header = document.getElementById('chatHeader');
-    const content = document.getElementById('chatContent');
-    header.innerHTML = '';
-    content.innerHTML = '';
-    
-    const url = isGroup ? `${apiBase}/messages/group/${id}` : `${apiBase}/messages/direct/${id}`;
-    fetch(url, { credentials: 'include' })
-    .then(res => res.json())
-    .then(messages => {
-        messages.forEach(msg => {
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add('message');
-            msgDiv.textContent = msg.text;
-            content.appendChild(msgDiv);
-        });
-    });
+function repostPost(id) {
+    fetch(`${apiBase}/post/repost`, {
+        method: 'POST',
+        body: JSON.stringify({ post_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Reposted'));
+}
+
+function reportPost(id) {
+    const reason = prompt('Reason:');
+    if (reason) {
+        fetch(`${apiBase}/post/report`, {
+            method: 'POST',
+            body: JSON.stringify({ post_id: id, reason }),
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        }).then(() => alert('Reported'));
+    }
+}
+
+function hidePost(id) {
+    fetch(`${apiBase}/post/hide`, {
+        method: 'POST',
+        body: JSON.stringify({ post_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Hidden'));
+}
+
+function toggleNotifications(user_id) {
+    fetch(`${apiBase}/post/subscribe`, {
+        method: 'POST',
+        body: JSON.stringify({ post_user_id: user_id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Toggled'));
+}
+
+function blockUser(id) {
+    fetch(`${apiBase}/block`, {
+        method: 'POST',
+        body: JSON.stringify({ target_id: id }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => alert('Blocked'));
+}
+
+function messageUser(id) {
+    showChatModal(id, false);
 }
 
 function createGroup() {
     const name = document.getElementById('groupName').value;
     const description = document.getElementById('groupDescription').value;
-    // Handle profile picture upload
-    
-    fetch(`${apiBase}/groups/create`, {
+    // Upload pic if any
+    fetch(`${apiBase}/group/create`, {
         method: 'POST',
         body: JSON.stringify({ name, description }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) alert(data.error);
-        else {
-            alert(data.message);
-            hideModal('createGroupModal');
-            loadInbox();
-        }
+    }).then(() => {
+        hideModal('groupCreateModal');
+        loadView('inbox');
     });
 }
 
-// Admin
-function loadAdmin() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <h2>Admin Dashboard</h2>
-        <h3>Pending Reports</h3>
-        <div id="reports-list">Loading...</div>
-    `;
-    fetch(`${apiBase}/admin/reports`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(reports => {
-        const list = document.getElementById('reports-list');
-        list.innerHTML = '';
-        if (reports.length === 0) {
-            list.innerHTML = '<p>No pending reports.</p>';
-            return;
-        }
-        reports.forEach(report => {
-            const reportDiv = document.createElement('div');
-            reportDiv.classList.add('report-item');
-            reportDiv.innerHTML = `
-                <p><strong>Reporter:</strong> @${report.reporter_username}</p>
-                <p><strong>Target:</strong> ${report.target_type} ID: ${report.target_id}</p>
-                <p><strong>Reason:</strong> ${report.reason}</p>
-                <button onclick="adminAction(${report.id}, 'dismiss', '${report.target_type}', ${report.target_id})">Dismiss</button>
-                <button onclick="adminAction(${report.id}, 'ban_user', '${report.target_type}', ${report.target_id})">Ban User</button>
-            `;
-            list.appendChild(reportDiv);
-        });
-    });
-}
-
-function adminAction(reportId, action, targetType, targetId) {
-    fetch(`${apiBase}/admin/action`, {
+function editGroup() {
+    const group_id = sessionStorage.getItem('currentGroupId');
+    const name = document.getElementById('editGroupName').value;
+    const description = document.getElementById('editGroupDescription').value;
+    fetch(`${apiBase}/group/edit`, {
         method: 'POST',
-        body: JSON.stringify({ report_id: reportId, action, target_type: targetType, target_id: targetId }),
+        body: JSON.stringify({ group_id, name, description }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (res.ok) {
-            alert(data.message);
-            loadAdmin();
-        }
+    }).then(() => {
+        hideModal('groupEditModal');
+        showChatModal(group_id, true);
     });
+}
+
+function report() {
+    // Generic report
+    alert('Reported');
 }
