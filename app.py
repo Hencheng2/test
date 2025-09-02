@@ -676,7 +676,7 @@ def private_messages(other_id):
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     if request.method == 'POST':
-        text = request.json.get('text')
+        text = request.form.get('text')
         media_url = None
         if 'file' in request.files:
             file = request.files['file']
@@ -711,7 +711,7 @@ def group_messages(group_id):
     if request.method == 'POST':
         if not can_send:
             return jsonify({'error': 'Cannot send'}), 403
-        text = request.json.get('text')
+        text = request.form.get('text')
         media_url = None
         if 'file' in request.files:
             file = request.files['file']
