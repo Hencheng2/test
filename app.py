@@ -17,7 +17,7 @@ app.secret_key = app.config['SECRET_KEY']
 
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'pdf', 'doc', 'docx'}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
@@ -285,928 +285,344 @@ def init_db():
         cursor.execute("SELECT id FROM users WHERE username = ?", (admin_username,))
         if not cursor.fetchone():
             unique_key = generate_unique_key()
-            cursor.execute("INSERT INTO users (username, password_hash, real_name, unique_key, is_admin, theme) VALUES (?, ?, 'Admin', ?, 1, 'dark')", (admin_username, admin_pass_hash, unique_key))
-        
-        db.commit()
-    except sqlite3.Error as e:
-        print(f"Database initialization error: {e}")
-        raise
+            cursor.execute("INSERT INTO users (username, password_hash, unique_key, is_admin) VALUES (?, ?, ?, 1)", (admin_username, admin_pass_hash, unique_key))
+            db.commit()
+    except Exception as e:
+        print(e)
 
-# Initialize database
-with app.app_context():
-    init_db()
+init_db()
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': 'Unauthorized'}), 401
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT banned_until FROM users WHERE id = ?", (session['user_id'],))
-        user = cursor.fetchone()
-        if user and user['banned_until'] and datetime.strptime(user['banned_until'], '%Y-%m-%d %H:%M:%S') > datetime.now():
-            return jsonify({'error': 'Account banned'}), 403
         return f(*args, **kwargs)
     return decorated_function
 
 def admin_required(f):
     @wraps(f)
+    @login_required
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
         db = get_db()
         cursor = db.cursor()
         cursor.execute("SELECT is_admin FROM users WHERE id = ?", (session['user_id'],))
-        user = cursor.fetchone()
-        if not user or not user['is_admin']:
-            return jsonify({'error': 'Admin required'}), 403
+        if cursor.fetchone()['is_admin'] == 0:
+            return jsonify({'error': 'Forbidden'}), 403
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route('/')
-def index():
+def notify(user_id, type, from_user_id=None, post_id=None, group_id=None, text=None):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO notifications (user_id, type, from_user_id, post_id, group_id, text) VALUES (?, ?, ?, ?, ?, ?)", (user_id, type, from_user_id, post_id, group_id, text))
+    db.commit()
+
+@app.route('/user/<username>')
+def user_profile(username):
     return render_template('index.html')
 
-@app.route('/api/register', methods=['POST'])
-def register():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c.isalpha() for c in password) or not any(not c.isalnum() for c in password):
-        return jsonify({'error': 'Password must be 6+ chars with letters, numbers, special char'}), 400
-    if username == app.config['ADMIN_USERNAME'] and password == app.config['ADMIN_PASS']:
-        return jsonify({'error': 'Cannot register admin credentials'}), 400
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        password_hash = generate_password_hash(password)
-        unique_key = generate_unique_key()
-        cursor.execute("INSERT INTO users (username, password_hash, unique_key) VALUES (?, ?, ?)", (username, password_hash, unique_key))
-        db.commit()
-        return jsonify({'unique_key': unique_key})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Username taken'}), 400
+@app.route('/group/<link>')
+def group_route(link):
+    return render_template('index.html')
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.json
-    identifier = data.get('identifier')
-    password = data.get('password')
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT id, password_hash, is_admin FROM users WHERE username = ? OR email = ?", (identifier, identifier))
-    user = cursor.fetchone()
-    if user and check_password_hash(user['password_hash'], password):
-        session['user_id'] = user['id']
-        session['is_admin'] = user['is_admin']
-        return jsonify({'message': 'Logged in'})
-    return jsonify({'error': 'Invalid credentials'}), 401
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return jsonify({'message': 'Logged out'})
-
-@app.route('/api/forgot', methods=['POST'])
-def forgot():
-    data = request.json
-    username = data.get('username')
-    unique_key = data.get('unique_key')
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT id FROM users WHERE username = ? AND unique_key = ?", (username, unique_key))
-    user = cursor.fetchone()
-    if user:
-        session['reset_user_id'] = user['id']
-        return jsonify({'message': 'Verified'})
-    return jsonify({'error': 'Invalid details'}), 400
-
-@app.route('/api/reset_password', methods=['POST'])
-def reset_password():
-    if 'reset_user_id' not in session:
-        return jsonify({'error': 'Not verified'}), 401
-    data = request.json
-    password = data.get('password')
-    if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c.isalpha() for c in password) or not any(not c.isalnum() for c in password):
-        return jsonify({'error': 'Password requirements not met'}), 400
-    password_hash = generate_password_hash(password)
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, session['reset_user_id']))
-    db.commit()
-    session.pop('reset_user_id')
-    return jsonify({'message': 'Password reset'})
-
-@app.route('/api/user/me', methods=['GET'])
+@app.route('/api/user/by_username/<username>', methods=['GET'])
 @login_required
-def get_me():
-    user_id = session['user_id']
+def get_user_by_username(username):
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-    user = dict(cursor.fetchone())
-    del user['password_hash']
-    return jsonify(user)
+    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'id': row['id']})
+
+@app.route('/api/group/by_link/<link>', methods=['GET'])
+@login_required
+def get_group_by_link(link):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT id FROM groups WHERE link = ?", (link,))
+    row = cursor.fetchone()
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify({'id': row['id']})
 
 @app.route('/api/user/<int:user_id>', methods=['GET'])
 @login_required
 def get_user(user_id):
-    current_user_id = session['user_id']
     db = get_db()
     cursor = db.cursor()
     cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
     user = cursor.fetchone()
     if not user:
-        return jsonify({'error': 'User not found'}), 404
-    user = dict(user)
-    del user['password_hash'], user['unique_key']
-    # Check if blocked
-    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", (current_user_id, user_id, user_id, current_user_id))
-    if cursor.fetchone():
-        return jsonify({'error': 'Blocked'}), 403
-    # Privacy check for profile
-    if user['profile_locked'] and not is_friend(current_user_id, user_id):
-        user = {'id': user['id'], 'username': user['username'], 'real_name': user['real_name'], 'profile_pic_url': user['profile_pic_url']}
-    return jsonify(user)
+        return jsonify({'error': 'Not found'}), 404
+    user_dict = dict(user)
+    del user_dict['password_hash']
+    is_own = user_id == session['user_id']
+    if not is_own:
+        del user_dict['unique_key']
+        cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", (session['user_id'], user_id, user_id, session['user_id']))
+        if cursor.fetchone():
+            return jsonify({'error': 'Blocked'}), 403
+        # Mutual friends
+        cursor.execute("""
+            SELECT u.id, u.real_name, u.username, u.profile_pic_url 
+            FROM users u
+            INNER JOIN follows f1 ON f1.followed_id = u.id AND f1.follower_id = ? AND f1.status = 'accepted'
+            INNER JOIN follows f2 ON f2.followed_id = u.id AND f2.follower_id = ? AND f2.status = 'accepted'
+            LIMIT 3
+        """, (session['user_id'], user_id))
+        user_dict['mutual_friends'] = [dict(row) for row in cursor.fetchall()]
+    # Counts
+    cursor.execute("SELECT COUNT(*) as posts FROM posts WHERE user_id = ? AND type = 'post'", (user_id,))
+    user_dict['posts_count'] = cursor.fetchone()['posts']
+    cursor.execute("SELECT COUNT(*) as likes FROM likes WHERE post_id IN (SELECT id FROM posts WHERE user_id = ?)", (user_id,))
+    user_dict['likes_count'] = cursor.fetchone()['likes']
+    cursor.execute("SELECT COUNT(*) as followers FROM follows WHERE followed_id = ? AND status = 'accepted'", (user_id,))
+    user_dict['followers_count'] = cursor.fetchone()['followers']
+    cursor.execute("SELECT COUNT(*) as following FROM follows WHERE follower_id = ? AND status = 'accepted'", (user_id,))
+    user_dict['following_count'] = cursor.fetchone()['following']
+    cursor.execute("""
+        SELECT COUNT(*) as friends FROM follows f1
+        WHERE f1.follower_id = ? AND f1.status = 'accepted'
+        AND EXISTS (SELECT 1 FROM follows f2 WHERE f2.follower_id = f1.followed_id AND f2.followed_id = ? AND f2.status = 'accepted')
+    """, (user_id, user_id))
+    user_dict['friends_count'] = cursor.fetchone()['friends']
+    return jsonify(user_dict)
 
-def is_friend(user1, user2):
+@app.route('/api/profile/update', methods=['POST'])
+@login_required
+def update_profile():
+    data = request.json
+    user_id = session['user_id']
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("""
-        SELECT * FROM follows WHERE follower_id = ? AND followed_id = ? AND status = 'accepted'
-        INTERSECT
-        SELECT * FROM follows WHERE follower_id = ? AND followed_id = ? AND status = 'accepted'
-    """, (user1, user2, user2, user1))
-    return bool(cursor.fetchone())
-
-@app.route('/api/user/update', methods=['POST'])
-@login_required
-def update_user():
-    user_id = session['user_id']
-    data = request.json
-    fields = ['real_name', 'bio', 'email', 'phone', 'gender', 'pronouns', 'dob', 'work', 'education', 'places', 'relationship', 'spouse', 'posts_privacy', 'reels_privacy', 'stories_privacy', 'theme', 'notifications_settings', 'profile_locked']
-    set_clause = ', '.join(f"{field} = ?" for field in fields if field in data)
-    values = [data[field] for field in fields if field in data] + [user_id]
-    if set_clause:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
-        db.commit()
+    if 'username' in data:
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        current_username = cursor.fetchone()['username']
+        if data['username'] != current_username:
+            cursor.execute("SELECT id FROM users WHERE username = ?", (data['username'],))
+            if cursor.fetchone():
+                return jsonify({'error': 'Username taken'}), 400
+    update_fields = list(data.keys())
+    update_str = ', '.join(f"{k} = ?" for k in update_fields)
+    values = list(data.values()) + [user_id]
+    cursor.execute(f"UPDATE users SET {update_str} WHERE id = ?", values)
+    db.commit()
     return jsonify({'message': 'Updated'})
 
-@app.route('/api/user/change_password', methods=['POST'])
+@app.route('/api/user/posts/<int:user_id>', methods=['GET'])
 @login_required
-def change_password():
-    user_id = session['user_id']
-    data = request.json
-    old_password = data.get('old_password')
-    new_password = data.get('new_password')
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
-    user = cursor.fetchone()
-    if not check_password_hash(user['password_hash'], old_password):
-        return jsonify({'error': 'Invalid old password'}), 400
-    if len(new_password) < 6 or not any(c.isdigit() for c in new_password) or not any(c.isalpha() for c in new_password) or not any(not c.isalnum() for c in new_password):
-        return jsonify({'error': 'Password requirements not met'}), 400
-    password_hash = generate_password_hash(new_password)
-    cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
-    db.commit()
-    return jsonify({'message': 'Password changed'})
-
-@app.route('/api/upload', methods=['POST'])
-@login_required
-def upload():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file'}), 400
-    file = request.files['file']
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(path)
-        return jsonify({'url': '/' + path})
-    return jsonify({'error': 'Invalid file'}), 400
-
-@app.route('/api/post/create', methods=['POST'])
-@login_required
-def create_post():
-    data = request.json
-    user_id = session['user_id']
-    type_ = data.get('type')  # post, reel, story
-    description = data.get('description')
-    media_url = data.get('media_url')
-    privacy = data.get('privacy')
-    if type_ not in ['post', 'reel', 'story']:
-        return jsonify({'error': 'Invalid type'}), 400
-    if type_ in ['reel', 'story'] and not media_url:
-        return jsonify({'error': 'Media required'}), 400
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO posts (user_id, type, description, media_url, privacy) VALUES (?, ?, ?, ?, ?)", (user_id, type_, description, media_url, privacy))
-    post_id = cursor.lastrowid
-    db.commit()
-    # Notify followers/friends if applicable
-    if type_ != 'story':
-        notify_followers(user_id, 'new_post', post_id=post_id)
-    return jsonify({'id': post_id})
-
-def notify_followers(user_id, type_, post_id=None, group_id=None, text=None):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT follower_id FROM follows WHERE followed_id = ? AND status = 'accepted'", (user_id,))
-    followers = [row['follower_id'] for row in cursor.fetchall()]
-    for follower in followers:
-        cursor.execute("INSERT INTO notifications (user_id, type, from_user_id, post_id, group_id, text) VALUES (?, ?, ?, ?, ?, ?)", (follower, type_, user_id, post_id, group_id, text))
-
-@app.route('/api/posts/feed', methods=['GET'])
-@login_required
-def get_feed():
-    user_id = session['user_id']
+def get_user_posts(user_id):
+    type_ = request.args.get('type', 'post')
+    privacy = request.args.get('privacy', None)
     page = int(request.args.get('page', 1))
-    limit = 10
-    offset = (page - 1) * limit
+    per_page = 20
+    offset = (page - 1) * per_page
+    current_id = session['user_id']
+    is_own = current_id == user_id
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("""
-        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
-        FROM posts p 
-        JOIN users u ON p.user_id = u.id 
-        WHERE p.type = 'post' AND 
-            (p.user_id = ? OR 
-             (p.privacy = 'all' OR 
-              (p.privacy = 'friends' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = p.user_id AND status = 'accepted' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = p.user_id AND followed_id = ? AND status = 'accepted'))) OR
-              p.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ? AND status = 'accepted')))
-        ORDER BY p.timestamp DESC LIMIT ? OFFSET ?
-    """, (user_id, user_id, user_id, user_id, limit, offset))
+    cursor.execute("SELECT posts_privacy FROM users WHERE id = ?", (user_id,))
+    user_privacy = cursor.fetchone()['posts_privacy']
+    if not is_own:
+        if user_privacy == 'only_me':
+            return jsonify([])
+        if user_privacy == 'friends':
+            cursor.execute("SELECT * FROM follows WHERE follower_id = ? AND followed_id = ? AND status = 'accepted'", (current_id, user_id))
+            if not cursor.fetchone():
+                return jsonify([])
+    where = "WHERE user_id = ? AND type = ?"
+    params = [user_id, type_]
+    if privacy:
+        where += " AND privacy = ?"
+        params.append(privacy)
+    cursor.execute(f"SELECT * FROM posts {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?", params + [per_page, offset])
     posts = [dict(row) for row in cursor.fetchall()]
     return jsonify(posts)
 
-@app.route('/api/reels', methods=['GET'])
+@app.route('/api/user/saves', methods=['GET'])
 @login_required
-def get_reels():
+def get_user_saves():
     user_id = session['user_id']
     page = int(request.args.get('page', 1))
-    limit = 10
-    offset = (page - 1) * limit
+    per_page = 20
+    offset = (page - 1) * per_page
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("""
-        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
-        FROM posts p 
-        JOIN users u ON p.user_id = u.id 
-        WHERE p.type = 'reel' AND p.media_url LIKE '%.mp4' AND 
-            (p.user_id = ? OR 
-             (p.privacy = 'all' OR 
-              (p.privacy = 'friends' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = p.user_id AND status = 'accepted' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = p.user_id AND followed_id = ? AND status = 'accepted'))) OR
-              p.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ? AND status = 'accepted')))
-        ORDER BY p.timestamp DESC LIMIT ? OFFSET ?
-    """, (user_id, user_id, user_id, user_id, limit, offset))
-    reels = [dict(row) for row in cursor.fetchall()]
-    return jsonify(reels)
+    cursor.execute("SELECT p.* FROM posts p JOIN saves s ON p.id = s.post_id WHERE s.user_id = ? ORDER BY s.timestamp DESC LIMIT ? OFFSET ?", (user_id, per_page, offset))
+    return jsonify([dict(row) for row in cursor.fetchall()])
 
-@app.route('/api/stories', methods=['GET'])
+@app.route('/api/user/reposts', methods=['GET'])
 @login_required
-def get_stories():
+def get_user_reposts():
     user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("""
-        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
-        FROM posts p 
-        JOIN users u ON p.user_id = u.id 
-        WHERE p.type = 'story' AND p.timestamp > ? AND
-            (p.user_id = ? OR 
-             (p.privacy = 'friends' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = p.user_id AND status = 'accepted' AND EXISTS (SELECT 1 FROM follows WHERE follower_id = p.user_id AND followed_id = ? AND status = 'accepted'))))
-        ORDER BY p.timestamp DESC
-    """, (datetime.now() - timedelta(hours=24), user_id, user_id, user_id))
-    stories = [dict(row) for row in cursor.fetchall()]
-    return jsonify(stories)
+    cursor.execute("SELECT p.* FROM posts p JOIN reposts r ON p.id = r.post_id WHERE r.user_id = ? ORDER BY r.timestamp DESC LIMIT ? OFFSET ?", (user_id, per_page, offset))
+    return jsonify([dict(row) for row in cursor.fetchall()])
 
-@app.route('/api/post/<int:post_id>', methods=['GET'])
+@app.route('/api/user/likes', methods=['GET'])
 @login_required
-def get_post(post_id):
+def get_user_likes():
     user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT p.*, u.username, u.real_name, u.profile_pic_url FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?", (post_id,))
-    post = cursor.fetchone()
-    if not post:
-        return jsonify({'error': 'Not found'}), 404
-    post = dict(post)
-    # Privacy check
-    if post['privacy'] == 'only_me' and post['user_id'] != user_id:
-        return jsonify({'error': 'Private'}), 403
-    if post['privacy'] == 'friends' and not is_friend(user_id, post['user_id']) and post['user_id'] != user_id:
-        return jsonify({'error': 'Private'}), 403
-    # Increase views
-    cursor.execute("UPDATE posts SET views = views + 1 WHERE id = ?", (post_id,))
-    db.commit()
-    return jsonify(post)
-
-@app.route('/api/post/like', methods=['POST'])
-@login_required
-def like_post():
-    data = request.json
-    post_id = data.get('post_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,))
-    post_user = cursor.fetchone()
-    if not post_user:
-        return jsonify({'error': 'Not found'}), 404
-    try:
-        cursor.execute("INSERT INTO likes (user_id, post_id) VALUES (?, ?)", (user_id, post_id))
-        db.commit()
-        notify(post_user['user_id'], 'like', from_user_id=user_id, post_id=post_id)
-        return jsonify({'message': 'Liked'})
-    except sqlite3.IntegrityError:
-        cursor.execute("DELETE FROM likes WHERE user_id = ? AND post_id = ?", (user_id, post_id))
-        db.commit()
-        return jsonify({'message': 'Unliked'})
-
-def notify(to_user_id, type_, from_user_id=None, post_id=None, group_id=None, text=None):
-    if to_user_id == from_user_id:
-        return
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO notifications (user_id, type, from_user_id, post_id, group_id, text) VALUES (?, ?, ?, ?, ?, ?)", (to_user_id, type_, from_user_id, post_id, group_id, text))
-    db.commit()
-
-@app.route('/api/post/comment', methods=['POST'])
-@login_required
-def comment_post():
-    data = request.json
-    post_id = data.get('post_id')
-    text = data.get('text')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id, comments_enabled FROM posts WHERE id = ?", (post_id,))
-    post = cursor.fetchone()
-    if not post or not post['comments_enabled']:
-        return jsonify({'error': 'Comments disabled or not found'}), 403
-    cursor.execute("INSERT INTO comments (user_id, post_id, text) VALUES (?, ?, ?)", (user_id, post_id, text))
-    db.commit()
-    notify(post['user_id'], 'comment', from_user_id=user_id, post_id=post_id)
-    return jsonify({'message': 'Commented'})
-
-@app.route('/api/post/comments/<int:post_id>', methods=['GET'])
-@login_required
-def get_comments(post_id):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT c.*, u.username, u.real_name, u.profile_pic_url FROM comments c JOIN users u ON c.user_id = u.id WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
-    comments = [dict(row) for row in cursor.fetchall()]
-    return jsonify(comments)
-
-@app.route('/api/post/share', methods=['POST'])
-@login_required
-def share_post():
-    data = request.json
-    post_id = data.get('post_id')
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id, shares_enabled FROM posts WHERE id = ?", (post_id,))
-    post = cursor.fetchone()
-    if not post or not post['shares_enabled']:
-        return jsonify({'error': 'Shares disabled or not found'}), 403
-    # Share logic: perhaps create a repost or send to chat
-    # For now, assume it's repost
-    return repost_post()
-
-@app.route('/api/post/repost', methods=['POST'])
-@login_required
-def repost_post():
-    data = request.json
-    post_id = data.get('post_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,))
-    post_user = cursor.fetchone()
-    if not post_user or post_user['user_id'] == user_id:
-        return jsonify({'error': 'Cannot repost own or not found'}), 400
-    try:
-        cursor.execute("INSERT INTO reposts (user_id, post_id) VALUES (?, ?)", (user_id, post_id))
-        db.commit()
-        notify(post_user['user_id'], 'repost', from_user_id=user_id, post_id=post_id)
-        return jsonify({'message': 'Reposted'})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Already reposted'}), 400
-
-@app.route('/api/post/save', methods=['POST'])
-@login_required
-def save_post():
-    data = request.json
-    post_id = data.get('post_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute("INSERT INTO saves (user_id, post_id) VALUES (?, ?)", (user_id, post_id))
-        db.commit()
-        return jsonify({'message': 'Saved'})
-    except sqlite3.IntegrityError:
-        cursor.execute("DELETE FROM saves WHERE user_id = ? AND post_id = ?", (user_id, post_id))
-        db.commit()
-        return jsonify({'message': 'Unsaved'})
-
-@app.route('/api/post/report', methods=['POST'])
-@login_required
-def report_post():
-    data = request.json
-    post_id = data.get('post_id')
-    reason = data.get('reason')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,))
-    if not cursor.fetchone() or cursor.fetchone()['user_id'] == user_id:
-        return jsonify({'error': 'Cannot report own or not found'}), 400
-    cursor.execute("INSERT INTO reports (reporter_id, target_type, target_id, reason) VALUES (?, 'post', ?, ?)", (user_id, post_id, reason))
-    db.commit()
-    return jsonify({'message': 'Reported'})
-
-@app.route('/api/post/hide', methods=['POST'])
-@login_required
-def hide_post():
-    # Hide is client-side, perhaps block user or ignore
-    # For now, return ok
-    return jsonify({'message': 'Hidden'})
-
-@app.route('/api/post/subscribe', methods=['POST'])
-@login_required
-def subscribe_post_notifications():
-    data = request.json
-    post_user_id = data.get('post_user_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute("INSERT INTO post_subscriptions (user_id, post_user_id) VALUES (?, ?)", (user_id, post_user_id))
-        db.commit()
-        return jsonify({'message': 'Subscribed'})
-    except sqlite3.IntegrityError:
-        cursor.execute("DELETE FROM post_subscriptions WHERE user_id = ? AND post_user_id = ?", (user_id, post_user_id))
-        db.commit()
-        return jsonify({'message': 'Unsubscribed'})
-
-@app.route('/api/follow/request', methods=['POST'])
-@login_required
-def follow_request():
-    data = request.json
-    target_id = data.get('target_id')
-    user_id = session['user_id']
-    if user_id == target_id:
-        return jsonify({'error': 'Cannot follow self'}), 400
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", (user_id, target_id, target_id, user_id))
-    if cursor.fetchone():
-        return jsonify({'error': 'Blocked'}), 403
-    try:
-        cursor.execute("INSERT INTO follows (follower_id, followed_id, status) VALUES (?, ?, 'pending')", (user_id, target_id))
-        db.commit()
-        notify(target_id, 'follow_request', from_user_id=user_id)
-        return jsonify({'message': 'Request sent'})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Already requested/following'}), 400
-
-@app.route('/api/follow/accept', methods=['POST'])
-@login_required
-def accept_follow():
-    data = request.json
-    from_id = data.get('from_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("UPDATE follows SET status = 'accepted' WHERE follower_id = ? AND followed_id = ?", (from_id, user_id))
-    if cursor.rowcount == 0:
-        return jsonify({'error': 'No request'}), 404
-    db.commit()
-    notify(from_id, 'follow_accepted', from_user_id=user_id)
-    return jsonify({'message': 'Accepted'})
-
-@app.route('/api/follow/decline', methods=['POST'])
-@login_required
-def decline_follow():
-    data = request.json
-    from_id = data.get('from_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM follows WHERE follower_id = ? AND followed_id = ?", (from_id, user_id))
-    db.commit()
-    return jsonify({'message': 'Declined'})
-
-@app.route('/api/follow/unfollow', methods=['POST'])
-@login_required
-def unfollow():
-    data = request.json
-    target_id = data.get('target_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM follows WHERE follower_id = ? AND followed_id = ?", (user_id, target_id))
-    db.commit()
-    return jsonify({'message': 'Unfollowed'})
-
-@app.route('/api/block', methods=['POST'])
-@login_required
-def block_user():
-    data = request.json
-    target_id = data.get('target_id')
-    user_id = session['user_id']
-    if user_id == target_id:
-        return jsonify({'error': 'Cannot block self'}), 400
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute("INSERT INTO blocks (blocker_id, blocked_id) VALUES (?, ?)", (user_id, target_id))
-        # Remove follows
-        cursor.execute("DELETE FROM follows WHERE (follower_id = ? AND followed_id = ?) OR (follower_id = ? AND followed_id = ?)", (user_id, target_id, target_id, user_id))
-        db.commit()
-        return jsonify({'message': 'Blocked'})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Already blocked'}), 400
-
-@app.route('/api/unblock', methods=['POST'])
-@login_required
-def unblock_user():
-    data = request.json
-    target_id = data.get('target_id')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (user_id, target_id))
-    db.commit()
-    return jsonify({'message': 'Unblocked'})
-
-@app.route('/api/friends/followers', methods=['GET'])
-@login_required
-def get_followers():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT u.id, u.username, u.real_name, u.profile_pic_url, (SELECT COUNT(*) FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.followed_id WHERE f1.follower_id = ? AND f2.follower_id = u.id AND f1.status = 'accepted' AND f2.status = 'accepted') as mutual
-        FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.followed_id = ? AND f.status = 'accepted'
-    """, (user_id, user_id))
-    followers = [dict(row) for row in cursor.fetchall()]
-    return jsonify(followers)
-
-@app.route('/api/friends/following', methods=['GET'])
-@login_required
-def get_following():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT u.id, u.username, u.real_name, u.profile_pic_url, (SELECT COUNT(*) FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.followed_id WHERE f1.follower_id = ? AND f2.follower_id = u.id AND f1.status = 'accepted' AND f2.status = 'accepted') as mutual
-        FROM follows f JOIN users u ON f.followed_id = u.id WHERE f.follower_id = ? AND f.status = 'accepted'
-    """, (user_id, user_id))
-    following = [dict(row) for row in cursor.fetchall()]
-    return jsonify(following)
-
-@app.route('/api/friends/friends', methods=['GET'])
-@login_required
-def get_friends():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT u.id, u.username, u.real_name, u.profile_pic_url, (SELECT COUNT(*) FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.followed_id WHERE f1.follower_id = ? AND f2.follower_id = u.id AND f1.status = 'accepted' AND f2.status = 'accepted') as mutual
-        FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.follower_id AND f1.follower_id = f2.followed_id JOIN users u ON f1.followed_id = u.id 
-        WHERE f1.follower_id = ? AND f1.status = 'accepted' AND f2.status = 'accepted'
-    """, (user_id, user_id))
-    friends = [dict(row) for row in cursor.fetchall()]
-    return jsonify(friends)
-
-@app.route('/api/friends/requests', methods=['GET'])
-@login_required
-def get_requests():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT u.id, u.username, u.real_name, u.profile_pic_url, (SELECT COUNT(*) FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.followed_id WHERE f1.follower_id = ? AND f2.follower_id = u.id AND f1.status = 'accepted' AND f2.status = 'accepted') as mutual
-        FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.followed_id = ? AND f.status = 'pending'
-    """, (user_id, user_id))
-    requests = [dict(row) for row in cursor.fetchall()]
-    return jsonify(requests)
-
-@app.route('/api/friends/suggested', methods=['GET'])
-@login_required
-def get_suggested():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    # Suggested based on mutual friends
-    cursor.execute("""
-        SELECT u.id, u.username, u.real_name, u.profile_pic_url, COUNT(*) as mutual
-        FROM follows f1 JOIN follows f2 ON f1.followed_id = f2.follower_id JOIN users u ON f2.followed_id = u.id
-        WHERE f1.follower_id = ? AND f2.followed_id != ? AND NOT EXISTS (SELECT 1 FROM follows f3 WHERE f3.follower_id = ? AND f3.followed_id = u.id)
-        GROUP BY u.id ORDER BY mutual DESC LIMIT 20
-    """, (user_id, user_id, user_id))
-    suggested = [dict(row) for row in cursor.fetchall()]
-    return jsonify(suggested)
-
-@app.route('/api/message/send', methods=['POST'])
-@login_required
-def send_message():
-    data = request.json
-    receiver_id = data.get('receiver_id')
-    text = data.get('text')
-    media_url = data.get('media_url')
-    is_group = data.get('is_group', 0)
-    disappearing_after = data.get('disappearing_after', 'off')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    if is_group:
-        cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (receiver_id, user_id))
-        member = cursor.fetchone()
-        if not member:
-            return jsonify({'error': 'Not member'}), 403
-        cursor.execute("SELECT allow_messages_nonadmin FROM group_permissions WHERE group_id = ?", (receiver_id,))
-        perm = cursor.fetchone()
-        if member['is_admin'] == 0 and perm['allow_messages_nonadmin'] == 0:
-            return jsonify({'error': 'Not allowed'}), 403
-        # Notify all members
-        cursor.execute("SELECT user_id FROM group_members WHERE group_id = ? AND user_id != ?", (receiver_id, user_id))
-        members = [row['user_id'] for row in cursor.fetchall()]
-        for m in members:
-            notify(m, 'group_message', from_user_id=user_id, group_id=receiver_id)
-    else:
-        if is_blocked(user_id, receiver_id):
-            return jsonify({'error': 'Blocked'}), 403
-        notify(receiver_id, 'message', from_user_id=user_id)
-    cursor.execute("INSERT INTO messages (sender_id, receiver_id, is_group, text, media_url, disappearing_after) VALUES (?, ?, ?, ?, ?, ?)", (user_id, receiver_id, is_group, text, media_url, disappearing_after))
-    db.commit()
-    # Handle disappearing: could schedule deletion, but for simplicity, check on get
-    return jsonify({'message': 'Sent'})
-
-def is_blocked(user1, user2):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM blocks WHERE blocker_id = ? AND blocked_id = ?", (user1, user2))
-    return bool(cursor.fetchone())
-
-@app.route('/api/messages/<int:chat_id>', methods=['GET'])
-@login_required
-def get_messages(chat_id):
-    user_id = session['user_id']
-    is_group = request.args.get('is_group', 0)
-    db = get_db()
-    cursor = db.cursor()
-    if is_group:
-        cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (chat_id, user_id))
-        if not cursor.fetchone():
-            return jsonify({'error': 'Not member'}), 403
-        where = "receiver_id = ? AND is_group = 1"
-        params = (chat_id,)
-    else:
-        if is_blocked(user_id, chat_id) or is_blocked(chat_id, user_id):
-            return jsonify({'error': 'Blocked'}), 403
-        where = "((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND is_group = 0"
-        params = (user_id, chat_id, chat_id, user_id)
-    # Delete disappeared messages
-    cursor.execute(f"DELETE FROM messages WHERE {where} AND disappearing_after != 'off' AND timestamp < ?", params + (get_disappear_time(),))
-    db.commit()
-    cursor.execute(f"SELECT m.*, u.username, u.real_name, u.profile_pic_url FROM messages m JOIN users u ON m.sender_id = u.id WHERE {where} ORDER BY timestamp ASC", params)
-    messages = [dict(row) for row in cursor.fetchall()]
-    # Mark read
-    cursor.execute(f"UPDATE messages SET read = 1 WHERE receiver_id = ? AND sender_id != ? AND read = 0 AND is_group = {is_group}", (chat_id if is_group else user_id, user_id))
-    db.commit()
-    return jsonify(messages)
-
-def get_disappear_time():
-    now = datetime.now()
-    return now - timedelta(hours=24)  # Placeholder, adjust based on disappearing_after
-
-@app.route('/api/inbox/chats', methods=['GET'])
-@login_required
-def get_chats():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT DISTINCT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END as chat_id,
-        (SELECT real_name FROM users WHERE id = chat_id) as real_name,
-        (SELECT username FROM users WHERE id = chat_id) as username,
-        (SELECT profile_pic_url FROM users WHERE id = chat_id) as profile_pic_url,
-        (SELECT text FROM messages WHERE ((sender_id = ? AND receiver_id = chat_id) OR (sender_id = chat_id AND receiver_id = ?)) ORDER BY timestamp DESC LIMIT 1) as last_message,
-        (SELECT timestamp FROM messages WHERE ((sender_id = ? AND receiver_id = chat_id) OR (sender_id = chat_id AND receiver_id = ?)) ORDER BY timestamp DESC LIMIT 1) as last_timestamp,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = chat_id AND receiver_id = ? AND read = 0) as unread
-        FROM messages WHERE is_group = 0 AND (sender_id = ? OR receiver_id = ?)
-        ORDER BY last_timestamp DESC
-    """, (user_id, user_id, user_id, user_id, user_id, user_id, user_id, user_id))
-    chats = [dict(row) for row in cursor.fetchall()]
-    return jsonify(chats)
-
-@app.route('/api/inbox/groups', methods=['GET'])
-@login_required
-def get_group_chats():
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT g.id as chat_id, g.name, g.profile_pic_url,
-        (SELECT text FROM messages WHERE receiver_id = g.id AND is_group = 1 ORDER BY timestamp DESC LIMIT 1) as last_message,
-        (SELECT timestamp FROM messages WHERE receiver_id = g.id AND is_group = 1 ORDER BY timestamp DESC LIMIT 1) as last_timestamp,
-        (SELECT COUNT(*) FROM messages WHERE receiver_id = g.id AND is_group = 1 AND read = 0) as unread
-        FROM group_members gm JOIN groups g ON gm.group_id = g.id WHERE gm.user_id = ? AND gm.status = 'accepted'
-        ORDER BY last_timestamp DESC
-    """, (user_id,))
-    groups = [dict(row) for row in cursor.fetchall()]
-    return jsonify(groups)
-
-@app.route('/api/chat/customize', methods=['POST'])
-@login_required
-def customize_chat():
-    data = request.json
-    chat_id = data.get('chat_id')
-    is_group = data.get('is_group', 0)
-    nickname = data.get('nickname')
-    wallpaper_url = data.get('wallpaper_url')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("REPLACE INTO chat_custom (user_id, chat_id, is_group, nickname, wallpaper_url) VALUES (?, ?, ?, ?, ?)", (user_id, chat_id, is_group, nickname, wallpaper_url))
-    db.commit()
-    return jsonify({'message': 'Customized'})
-
-@app.route('/api/chat/custom', methods=['GET'])
-@login_required
-def get_chat_custom():
-    chat_id = request.args.get('chat_id')
-    is_group = request.args.get('is_group', 0)
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM chat_custom WHERE user_id = ? AND chat_id = ? AND is_group = ?", (user_id, chat_id, is_group))
-    custom = dict(cursor.fetchone() or {})
-    return jsonify(custom)
-
-@app.route('/api/chat/search', methods=['GET'])
-@login_required
-def search_messages():
-    chat_id = request.args.get('chat_id')
-    query = request.args.get('query')
-    is_group = request.args.get('is_group', 0)
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    if is_group:
-        where = "receiver_id = ? AND is_group = 1 AND text LIKE ?"
-        params = (chat_id, f"%{query}%")
-    else:
-        where = "((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND is_group = 0 AND text LIKE ?"
-        params = (user_id, chat_id, chat_id, user_id, f"%{query}%")
-    cursor.execute(f"SELECT * FROM messages WHERE {where} ORDER BY timestamp DESC", params)
-    messages = [dict(row) for row in cursor.fetchall()]
-    return jsonify(messages)
-
-@app.route('/api/group/create', methods=['POST'])
-@login_required
-def create_group():
-    data = request.json
-    name = data.get('name')
-    description = data.get('description')
-    profile_pic_url = data.get('profile_pic_url')
-    user_id = session['user_id']
-    link = generate_group_link()
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("INSERT INTO groups (name, creator_id, description, profile_pic_url, link) VALUES (?, ?, ?, ?, ?)", (name, user_id, description, profile_pic_url, link))
-    group_id = cursor.lastrowid
-    cursor.execute("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 1)", (group_id, user_id))
-    cursor.execute("INSERT INTO group_permissions (group_id) VALUES (?)", (group_id,))
-    db.commit()
-    return jsonify({'id': group_id, 'link': link})
+    cursor.execute("SELECT p.* FROM posts p JOIN likes l ON p.id = l.post_id WHERE l.user_id = ? ORDER BY l.timestamp DESC LIMIT ? OFFSET ?", (user_id, per_page, offset))
+    return jsonify([dict(row) for row in cursor.fetchall()])
 
 @app.route('/api/group/<int:group_id>', methods=['GET'])
 @login_required
 def get_group(group_id):
-    user_id = session['user_id']
     db = get_db()
     cursor = db.cursor()
     cursor.execute("SELECT * FROM groups WHERE id = ?", (group_id,))
-    group = dict(cursor.fetchone() or {})
+    group = cursor.fetchone()
     if not group:
         return jsonify({'error': 'Not found'}), 404
-    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
-    if not cursor.fetchone() and not session.get('is_admin'):
-        return jsonify({'error': 'Not member'}), 403
-    return jsonify(group)
-
-@app.route('/api/group/edit', methods=['POST'])
-@login_required
-def edit_group():
-    data = request.json
-    group_id = data.get('group_id')
-    name = data.get('name')
-    description = data.get('description')
-    profile_pic_url = data.get('profile_pic_url')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
+    group_dict = dict(group)
+    cursor.execute("SELECT COUNT(*) as count FROM group_members WHERE group_id = ? AND status = 'accepted'", (group_id,))
+    group_dict['members_count'] = cursor.fetchone()['count']
+    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
     member = cursor.fetchone()
     if not member:
         return jsonify({'error': 'Not member'}), 403
-    cursor.execute("SELECT allow_edit_nonadmin FROM group_permissions WHERE group_id = ?", (group_id,))
-    perm = cursor.fetchone()
-    if member['is_admin'] == 0 and perm['allow_edit_nonadmin'] == 0:
-        return jsonify({'error': 'Not allowed'}), 403
-    set_clause = []
-    values = []
-    if name:
-        set_clause.append("name = ?")
-        values.append(name)
-    if description:
-        set_clause.append("description = ?")
-        values.append(description)
-    if profile_pic_url:
-        set_clause.append("profile_pic_url = ?")
-        values.append(profile_pic_url)
-    if set_clause:
-        cursor.execute(f"UPDATE groups SET {', '.join(set_clause)} WHERE id = ?", values + [group_id])
-        db.commit()
-    return jsonify({'message': 'Edited'})
+    group_dict['is_admin'] = member['is_admin']
+    cursor.execute("SELECT username FROM users WHERE id = ?", (group_dict['creator_id'],))
+    creator_username = cursor.fetchone()['username']
+    group_dict['description_full'] = (group_dict['description'] or '') + f"\nCreated by @{creator_username} on {group_dict['created_at']}"
+    cursor.execute("SELECT * FROM group_permissions WHERE group_id = ?", (group_id,))
+    group_dict['permissions'] = dict(cursor.fetchone())
+    return jsonify(group_dict)
 
-@app.route('/api/group/permissions', methods=['POST'])
+@app.route('/api/group/members/<int:group_id>', methods=['GET'])
 @login_required
-def update_group_permissions():
-    data = request.json
-    group_id = data.get('group_id')
-    allow_edit_nonadmin = data.get('allow_edit_nonadmin')
-    allow_messages_nonadmin = data.get('allow_messages_nonadmin')
-    allow_add_nonadmin = data.get('allow_add_nonadmin')
-    approve_new_members = data.get('approve_new_members')
-    user_id = session['user_id']
+def get_group_members(group_id):
+    limit = int(request.args.get('limit', 10))
+    offset = int(request.args.get('offset', 0))
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
-    if not cursor.fetchone() or cursor.fetchone()['is_admin'] == 0:
-        return jsonify({'error': 'Admin required'}), 403
-    cursor.execute("UPDATE group_permissions SET allow_edit_nonadmin = ?, allow_messages_nonadmin = ?, allow_add_nonadmin = ?, approve_new_members = ? WHERE group_id = ?", (allow_edit_nonadmin, allow_messages_nonadmin, allow_add_nonadmin, approve_new_members, group_id))
-    db.commit()
-    return jsonify({'message': 'Updated'})
+    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if not cursor.fetchone():
+        return jsonify({'error': 'Not member'}), 403
+    cursor.execute("""
+        SELECT u.id, u.username, u.real_name, u.profile_pic_url, gm.is_admin 
+        FROM group_members gm JOIN users u ON gm.user_id = u.id 
+        WHERE gm.group_id = ? AND gm.status = 'accepted' 
+        ORDER BY gm.joined_at DESC LIMIT ? OFFSET ?
+    """, (group_id, limit, offset))
+    members = [dict(row) for row in cursor.fetchall()]
+    return jsonify(members)
 
-@app.route('/api/group/join', methods=['POST'])
+@app.route('/api/group/admin/toggle', methods=['POST'])
 @login_required
-def join_group():
-    data = request.json
-    link = data.get('link')
-    user_id = session['user_id']
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT id FROM groups WHERE link = ?", (link,))
-    group = cursor.fetchone()
-    if not group:
-        return jsonify({'error': 'Invalid link'}), 404
-    group_id = group['id']
-    cursor.execute("SELECT approve_new_members FROM group_permissions WHERE group_id = ?", (group_id,))
-    approve = cursor.fetchone()['approve_new_members']
-    status = 'pending' if approve else 'accepted'
-    try:
-        cursor.execute("INSERT INTO group_members (group_id, user_id, status) VALUES (?, ?, ?)", (group_id, user_id, status))
-        db.commit()
-        if status == 'accepted':
-            notify_group_admins(group_id, 'new_member', from_user_id=user_id)
-        else:
-            notify_group_admins(group_id, 'join_request', from_user_id=user_id)
-        return jsonify({'message': 'Joined' if status == 'accepted' else 'Request sent'})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Already member'}), 400
-
-def notify_group_admins(group_id, type_, from_user_id=None, text=None):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT user_id FROM group_members WHERE group_id = ? AND is_admin = 1", (group_id,))
-    admins = [row['user_id'] for row in cursor.fetchall()]
-    for admin in admins:
-        notify(admin, type_, from_user_id=from_user_id, group_id=group_id, text=text)
-
-@app.route('/api/group/approve', methods=['POST'])
-@login_required
-def approve_member():
+def toggle_group_admin():
     data = request.json
     group_id = data.get('group_id')
     target_id = data.get('target_id')
-    user_id = session['user_id']
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
-    if not cursor.fetchone() or cursor.fetchone()['is_admin'] == 0:
-        return jsonify({'error': 'Admin required'}), 403
-    cursor.execute("UPDATE group_members SET status = 'accepted' WHERE group_id = ? AND user_id = ?", (group_id, target_id))
+    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if cursor.fetchone()['is_admin'] == 0:
+        return jsonify({'error': 'Not admin'}), 403
+    cursor.execute("SELECT creator_id FROM groups WHERE id = ?", (group_id,))
+    if target_id == cursor.fetchone()['creator_id']:
+        return jsonify({'error': 'Cannot toggle creator'}), 400
+    cursor.execute("UPDATE group_members SET is_admin = 1 - is_admin WHERE group_id = ? AND user_id = ?", (group_id, target_id))
     db.commit()
-    notify(target_id, 'group_approved', group_id=group_id)
-    return jsonify({'message': 'Approved'})
+    return jsonify({'message': 'Toggled'})
+
+@app.route('/api/group/remove', methods=['POST'])
+@login_required
+def remove_group_member():
+    data = request.json
+    group_id = data.get('group_id')
+    target_id = data.get('target_id')
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if cursor.fetchone()['is_admin'] == 0:
+        return jsonify({'error': 'Not admin'}), 403
+    cursor.execute("SELECT creator_id FROM groups WHERE id = ?", (group_id,))
+    if target_id == cursor.fetchone()['creator_id']:
+        return jsonify({'error': 'Cannot remove creator'}), 400
+    cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, target_id))
+    db.commit()
+    notify(target_id, 'group_remove', group_id=group_id)
+    return jsonify({'message': 'Removed'})
+
+@app.route('/api/group/permissions/update', methods=['POST'])
+@login_required
+def update_group_permissions():
+    data = request.json
+    group_id = data.pop('group_id')
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if cursor.fetchone()['is_admin'] == 0:
+        return jsonify({'error': 'Not admin'}), 403
+    update_str = ', '.join(f"{k} = ?" for k in data)
+    values = list(data.values()) + [group_id]
+    cursor.execute(f"UPDATE group_permissions SET {update_str} WHERE group_id = ?", values)
+    db.commit()
+    return jsonify({'message': 'Updated'})
+
+@app.route('/api/group/media/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_media(group_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if not cursor.fetchone():
+        return jsonify({'error': 'Not member'}), 403
+    cursor.execute("SELECT media_url FROM messages WHERE receiver_id = ? AND is_group = 1 AND media_url IS NOT NULL", (group_id,))
+    media = [dict(row) for row in cursor.fetchall()]
+    return jsonify(media)
+
+@app.route('/api/group/links/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_links(group_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if not cursor.fetchone():
+        return jsonify({'error': 'Not member'}), 403
+    cursor.execute("SELECT text FROM messages WHERE receiver_id = ? AND is_group = 1 AND text LIKE '%http%'", (group_id,))
+    links = [dict(row) for row in cursor.fetchall()]
+    return jsonify(links)
+
+@app.route('/api/group/docs/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_docs(group_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, session['user_id']))
+    if not cursor.fetchone():
+        return jsonify({'error': 'Not member'}), 403
+    cursor.execute("SELECT media_url FROM messages WHERE receiver_id = ? AND is_group = 1 AND (media_url LIKE '%.pdf' OR media_url LIKE '%.doc' OR media_url LIKE '%.docx')", (group_id,))
+    docs = [dict(row) for row in cursor.fetchall()]
+    return jsonify(docs)
+
+@app.route('/api/group/report', methods=['POST'])
+@login_required
+def report_group():
+    data = request.json
+    group_id = data.get('group_id')
+    reason = data.get('reason')
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO reports (reporter_id, target_type, target_id, reason) VALUES (?, 'group', ?, ?)", (session['user_id'], group_id, reason))
+    db.commit()
+    return jsonify({'message': 'Reported'})
+
+# The rest of the app.py code remains the same, including the routes like /api/group/add, etc.
 
 @app.route('/api/group/add', methods=['POST'])
 @login_required
