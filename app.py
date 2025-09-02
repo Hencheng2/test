@@ -1,5 +1,4 @@
-# app.py (Full Backend Code)
-
+```python
 import os
 import sqlite3
 import random
@@ -53,10 +52,9 @@ def generate_group_link():
             return link
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        cursor = db.cursor()
-        
+    db = get_db()
+    cursor = db.cursor()
+    try:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,8 +230,13 @@ def init_db():
             cursor.execute("INSERT INTO users (username, password_hash, real_name, unique_key, is_admin) VALUES (?, ?, 'Admin', ?, 1)", (admin_username, admin_pass_hash, unique_key))
         
         db.commit()
+    except sqlite3.Error as e:
+        print(f"Database initialization error: {e}")
+        raise
 
-init_db()
+# Initialize database on app startup
+with app.app_context():
+    init_db()
 
 def login_required(f):
     @wraps(f)
@@ -1108,16 +1111,16 @@ def search():
     cursor = db.cursor()
     results = {}
     if type_ in ['all', 'users']:
-        cursor.execute("SELECT id, username, real_name, profile_pic_url FROM users WHERE real_name LIKE ? OR username LIKE ?", (f"%{query}%", f"%{query}%"))
+        cursor.execute("SELECT id, username, real_name, profile_pic_url FROM users WHERE real_name LIKE ? OR username LIKE ? LIMIT 20", (f"%{query}%", f"%{query}%"))
         results['users'] = [dict(row) for row in cursor.fetchall()]
     if type_ in ['all', 'groups']:
-        cursor.execute("SELECT id, name, profile_pic_url FROM groups WHERE name LIKE ?", (f"%{query}%",))
+        cursor.execute("SELECT id, name, profile_pic_url FROM groups WHERE name LIKE ? LIMIT 20", (f"%{query}%",))
         results['groups'] = [dict(row) for row in cursor.fetchall()]
     if type_ in ['all', 'posts']:
-        cursor.execute("SELECT p.id, p.description, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.type = 'post' AND p.description LIKE ?", (f"%{query}%",))
+        cursor.execute("SELECT p.id, p.description, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.type = 'post' AND p.description LIKE ? LIMIT 20", (f"%{query}%",))
         results['posts'] = [dict(row) for row in cursor.fetchall()]
     if type_ in ['all', 'reels']:
-        cursor.execute("SELECT p.id, p.description, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.type = 'reel' AND p.description LIKE ?", (f"%{query}%",))
+        cursor.execute("SELECT p.id, p.description, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.type = 'reel' AND p.description LIKE ? LIMIT 20", (f"%{query}%",))
         results['reels'] = [dict(row) for row in cursor.fetchall()]
     return jsonify(results)
 
