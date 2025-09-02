@@ -1,937 +1,1324 @@
-# app.py
-
-from flask import Flask, render_template, redirect, url_for, flash, request, session, jsonify, send_from_directory
+import os
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime
-import os
-import random
-import string
-from config import SECRET_KEY, ADMIN_USERNAME, ADMIN_PASS
+import uuid
+from datetime import datetime, timedelta
+import json
+from functools import wraps
 
+# Initialize Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = SECRET_KEY
+app.config.from_pyfile('config.py')
+
+# Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sociafam.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = '09da35833ef9cb699888f08d66a0cfb827fb10e53f6c1549'
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 db = SQLAlchemy(app)
 
-@app.context_processor
-def inject_user():
-    return dict(User=User)
-
+# Database Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True)
-    password_hash = db.Column(db.String(128), nullable=False)
-    real_name = db.Column(db.String(100))
-    bio = db.Column(db.Text)
-    profile_pic = db.Column(db.String(200), default='default.jpg')
+    password = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    real_name = db.Column(db.String(120), nullable=True)
+    profile_pic = db.Column(db.String(200), default='default_profile.png')
+    bio = db.Column(db.Text, nullable=True)
     unique_key = db.Column(db.String(4), unique=True, nullable=False)
-    date_of_birth = db.Column(db.Date)
-    gender = db.Column(db.String(20))
-    pronouns = db.Column(db.String(20))
-    work = db.Column(db.String(200))
-    education = db.Column(db.String(200))
-    location = db.Column(db.String(200))
-    phone = db.Column(db.String(20))
-    social_link = db.Column(db.String(200))
-    website = db.Column(db.String(200))
-    relationship = db.Column(db.String(20))
-    spouse = db.Column(db.String(80))
-    is_admin = db.Column(db.Boolean, default=False)
-    is_banned = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    posts = db.relationship('Post', backref='user', lazy=True)
-    reels = db.relationship('Reel', backref='user', lazy=True)
-    stories = db.relationship('Story', backref='user', lazy=True)
-    notifications = db.relationship('Notification', backref='user', lazy=True)
-
-    def __repr__(self):
-        return f'<User {self.username}>'
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+    is_admin = db.Column(db.Boolean, default=False)
+    
+    # Profile details
+    date_of_birth = db.Column(db.Date, nullable=True)
+    gender = db.Column(db.String(20), nullable=True)
+    pronouns = db.Column(db.String(20), nullable=True)
+    work = db.Column(db.String(120), nullable=True)
+    education = db.Column(db.String(120), nullable=True)
+    location = db.Column(db.String(120), nullable=True)
+    phone_number = db.Column(db.String(20), nullable=True)
+    website = db.Column(db.String(200), nullable=True)
+    relationship = db.Column(db.String(20), nullable=True)
+    spouse = db.Column(db.String(80), nullable=True)
+    
+    # Privacy settings
+    is_private = db.Column(db.Boolean, default=False)
+    
+    # Relationships
+    followers = db.relationship('Follow', foreign_keys='Follow.followed_id', backref='followed', lazy='dynamic')
+    following = db.relationship('Follow', foreign_keys='Follow.follower_id', backref='follower', lazy='dynamic')
+    posts = db.relationship('Post', backref='author', lazy='dynamic')
+    stories = db.relationship('Story', backref='author', lazy='dynamic')
+    reels = db.relationship('Reel', backref='author', lazy='dynamic')
+    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', backref='sender', lazy='dynamic')
+    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', backref='receiver', lazy='dynamic')
+    notifications = db.relationship('Notification', backref='user', lazy='dynamic')
+    groups = db.relationship('GroupMember', backref='user', lazy='dynamic')
 
 class Follow(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     follower_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     followed_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    status = db.Column(db.String(20), default='requested')  # requested, following, blocked
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (db.UniqueConstraint('follower_id', 'followed_id'),)
 
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    media_url = db.Column(db.String(200), nullable=True)
+    media_type = db.Column(db.String(20), nullable=True)  # image, video, None
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    content = db.Column(db.Text)
-    media_url = db.Column(db.String(200))
-    media_type = db.Column(db.String(20))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    views = db.Column(db.Integer, default=0)
-    privacy = db.Column(db.String(20), default='all')
-    likes = db.relationship('Like', backref='post', lazy=True)
-    comments = db.relationship('Comment', backref='post', lazy=True)
-
-class Reel(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    video_url = db.Column(db.String(200))
-    description = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    views = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_private = db.Column(db.Boolean, default=False)
+    
+    # Interactions
+    likes = db.relationship('Like', backref='post', lazy='dynamic')
+    comments = db.relationship('Comment', backref='post', lazy='dynamic')
+    shares = db.relationship('Share', backref='post', lazy='dynamic')
+    saves = db.relationship('Save', backref='post', lazy='dynamic')
 
 class Story(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=True)
+    media_url = db.Column(db.String(200), nullable=False)
+    media_type = db.Column(db.String(20), nullable=False)  # image, video, audio
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    media_url = db.Column(db.String(200))
-    media_type = db.Column(db.String(20))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, default=datetime.utcnow() + timedelta(hours=24))
+
+class Reel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=True)
+    media_url = db.Column(db.String(200), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Interactions
+    likes = db.relationship('ReelLike', backref='reel', lazy='dynamic')
+    comments = db.relationship('ReelComment', backref='reel', lazy='dynamic')
+    shares = db.relationship('ReelShare', backref='reel', lazy='dynamic')
+    saves = db.relationship('ReelSave', backref='reel', lazy='dynamic')
 
 class Like(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Comment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'))
-    content = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class Repost(db.Model):
+class Share(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    original_post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-    original_reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Save(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# Similar models for Reel interactions
+class ReelLike(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ReelComment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ReelShare(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ReelSave(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reel_id = db.Column(db.Integer, db.ForeignKey('reel.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    group_id = db.Column(db.Integer, db.ForeignKey('group.id'))
-    content = db.Column(db.Text)
-    media_url = db.Column(db.String(200))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Null for group messages
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)  # Null for direct messages
+    media_url = db.Column(db.String(200), nullable=True)
+    media_type = db.Column(db.String(20), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_read = db.Column(db.Boolean, default=False)
 
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    profile_pic = db.Column(db.String(200), default='default_group.jpg')
-    description = db.Column(db.Text)
-    link = db.Column(db.String(100), unique=True)
-    allow_edit = db.Column(db.Boolean, default=False)
-    allow_send = db.Column(db.Boolean, default=True)
-    allow_add = db.Column(db.Boolean, default=True)
-    approve_members = db.Column(db.Boolean, default=False)
-    members = db.relationship('GroupMember', backref='group', lazy=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    profile_pic = db.Column(db.String(200), default='default_group.png')
+    unique_link = db.Column(db.String(20), unique=True, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Group settings
+    allow_messages = db.Column(db.Boolean, default=True)
+    allow_add_members = db.Column(db.Boolean, default=True)
+    approve_new_members = db.Column(db.Boolean, default=False)
+    
+    members = db.relationship('GroupMember', backref='group', lazy='dynamic')
+    messages = db.relationship('Message', backref='group', lazy='dynamic')
 
 class GroupMember(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    type = db.Column(db.String(50))
-    content = db.Column(db.Text)
-    link = db.Column(db.String(200))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    content = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(20), nullable=False)  # friend_request, like, comment, message, etc.
+    reference_id = db.Column(db.Integer, nullable=True)  # ID of the related entity
     is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Report(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    reported_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    reported_post_id = db.Column(db.Integer, db.ForeignKey('post.id'))
-    reported_group_id = db.Column(db.Integer, db.ForeignKey('group.id'))
-    description = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    reported_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    reported_post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=True)
+    reported_group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
+    reason = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, reviewed, resolved
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Authentication decorators
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_admin:
+            flash('Admin access required')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Utility functions
 def generate_unique_key():
-    while True:
-        key = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
-        if not User.query.filter_by(unique_key=key).first():
-            return key
+    import random
+    import string
+    letters = ''.join(random.choices(string.ascii_uppercase, k=2))
+    numbers = ''.join(random.choices(string.digits, k=2))
+    return letters + numbers
 
-def generate_group_link():
-    while True:
-        link = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-        if not Group.query.filter_by(link=link).first():
-            return link
+def allowed_file(filename, allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'avi'}):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
+# Routes
 @app.route('/')
 def index():
-    if 'user_id'in session:
-        return redirect(url_for('home'))
+    if 'user_id' in session:
+        return render_template('index.html')
     return redirect(url_for('login'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c.isalpha() for c in password) or not any(not c.isalnum() for c in password):
-            flash('Password must be 6+ chars with numbers, letters, special char')
-            return redirect(url_for('register'))
-        if username == ADMIN_USERNAME and password == ADMIN_PASS:
-            flash('Cannot register with admin credentials')
-            return redirect(url_for('register'))
-        if User.query.filter_by(username=username).first():
-            flash('Username taken')
-            return redirect(url_for('register'))
-        user = User(username=username, unique_key=generate_unique_key())
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        flash('Registered successfully. Your unique key is ' + user.unique_key)
-        return redirect(url_for('login'))
-    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        identifier = request.form['identifier']
-        password = request.form['password']
-        user = User.query.filter_by(username=identifier).first() or User.query.filter_by(email=identifier).first()
-        if user and user.check_password(password) and not user.is_banned:
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
             session['user_id'] = user.id
-            if user.username == ADMIN_USERNAME:
-                user.is_admin = True
-                db.session.commit()
-                return redirect(url_for('admin_dashboard'))
-            return redirect(url_for('home'))
-        flash('Invalid credentials or banned')
-    return render_template('login.html')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid username or password')
+    
+    return render_template('auth/login.html')
 
-@app.route('/forgot_password', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Check if username already exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists')
+            return render_template('auth/register.html')
+        
+        # Check if passwords match
+        if password != confirm_password:
+            flash('Passwords do not match')
+            return render_template('auth/register.html')
+        
+        # Password validation
+        if len(password) < 6 or not any(char.isdigit() for char in password) or not any(char in '!@#$%^&*()_+-=[]{}|;:,.<>?`~' for char in password):
+            flash('Password must be at least 6 characters with numbers and special characters')
+            return render_template('auth/register.html')
+        
+        # Create user
+        hashed_password = generate_password_hash(password)
+        unique_key = generate_unique_key()
+        
+        # Ensure unique key is unique
+        while User.query.filter_by(unique_key=unique_key).first():
+            unique_key = generate_unique_key()
+        
+        # Prevent registration with admin credentials
+        if username == app.config.get('ADMIN_USERNAME', 'Henry') and password == app.config.get('ADMIN_PASS', 'Dec@2003'):
+            flash('Cannot use admin credentials for registration')
+            return render_template('auth/register.html')
+        
+        user = User(
+            username=username,
+            password=hashed_password,
+            unique_key=unique_key,
+            real_name=username  # Default to username
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        flash('Registration successful. Please login.')
+        return redirect(url_for('login'))
+    
+    return render_template('auth/register.html')
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
-        username = request.form['username']
-        key = request.form['key']
-        user = User.query.filter_by(username=username, unique_key=key).first()
+        username = request.form.get('username')
+        unique_key = request.form.get('unique_key')
+        
+        user = User.query.filter_by(username=username, unique_key=unique_key).first()
+        
         if user:
             session['reset_user_id'] = user.id
             return redirect(url_for('reset_password'))
-        flash('Invalid username or key')
-    return render_template('forgot_password.html')
+        else:
+            flash('Invalid username or unique key')
+    
+    return render_template('auth/forgot_password.html')
 
-@app.route('/reset_password', methods=['GET', 'POST'])
+@app.route('/reset-password', methods=['GET', 'POST'])
 def reset_password():
     if 'reset_user_id' not in session:
         return redirect(url_for('forgot_password'))
+    
     if request.method == 'POST':
-        password = request.form['password']
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if password != confirm_password:
+            flash('Passwords do not match')
+            return render_template('auth/reset_password.html')
+        
+        # Password validation
+        if len(password) < 6 or not any(char.isdigit() for char in password) or not any(char in '!@#$%^&*()_+-=[]{}|;:,.<>?`~' for char in password):
+            flash('Password must be at least 6 characters with numbers and special characters')
+            return render_template('auth/reset_password.html')
+        
         user = User.query.get(session['reset_user_id'])
-        user.set_password(password)
+        user.password = generate_password_hash(password)
         db.session.commit()
-        del session['reset_user_id']
-        flash('Password reset successful')
+        
+        session.pop('reset_user_id', None)
+        flash('Password reset successful. Please login.')
         return redirect(url_for('login'))
-    return render_template('reset_password.html')
+    
+    return render_template('auth/reset_password.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)
+    session.clear()
     return redirect(url_for('login'))
 
-from functools import wraps
-
-def login_required(f):
-    @wraps(f)
-    def wrap(*args, **kwargs):
-        if 'user_id' in session:
-            return f(*args, **kwargs)
-        return redirect(url_for('login'))
-    return wrap
-
-def admin_required(f):
-    @wraps(f)
-    def wrap(*args, **kwargs):
-        if 'user_id' in session:
-            user = User.query.get(session['user_id'])
-            if user.is_admin:
-                return f(*args, **kwargs)
-        return redirect(url_for('login'))
-    return wrap
-
-@app.route('/home')
+# API Routes for dynamic content loading
+@app.route('/api/home')
 @login_required
-def home():
-    user = User.query.get(session['user_id'])
-    friends = [f.followed_id for f in Follow.query.filter_by(follower_id=user.id, status='following').all()]
-    stories = Story.query.filter(Story.user_id.in_(friends)).order_by(Story.timestamp.desc()).all()
-    posts = Post.query.order_by(Post.timestamp.desc()).limit(20).all()
-    return render_template('home.html', stories=stories, posts=posts)
+def api_home():
+    # Get posts from users that the current user follows
+    following_ids = [f.followed_id for f in Follow.query.filter_by(follower_id=session['user_id']).all()]
+    following_ids.append(session['user_id'])  # Include user's own posts
+    
+    posts = Post.query.filter(Post.user_id.in_(following_ids), Post.is_private == False).order_by(Post.created_at.desc()).all()
+    
+    # Get stories from users that the current user follows (within last 24 hours)
+    stories = Story.query.filter(Story.user_id.in_(following_ids), Story.expires_at > datetime.utcnow()).order_by(Story.created_at.desc()).all()
+    
+    posts_data = []
+    for post in posts:
+        post_dict = {
+            'id': post.id,
+            'content': post.content,
+            'media_url': post.media_url,
+            'media_type': post.media_type,
+            'user': {
+                'id': post.author.id,
+                'username': post.author.username,
+                'real_name': post.author.real_name,
+                'profile_pic': post.author.profile_pic
+            },
+            'created_at': post.created_at.isoformat(),
+            'likes_count': post.likes.count(),
+            'comments_count': post.comments.count(),
+            'shares_count': post.shares.count(),
+            'is_liked': post.likes.filter_by(user_id=session['user_id']).first() is not None,
+            'is_saved': post.saves.filter_by(user_id=session['user_id']).first() is not None
+        }
+        posts_data.append(post_dict)
+    
+    stories_data = []
+    for story in stories:
+        story_dict = {
+            'id': story.id,
+            'content': story.content,
+            'media_url': story.media_url,
+            'media_type': story.media_type,
+            'user': {
+                'id': story.author.id,
+                'username': story.author.username,
+                'real_name': story.author.real_name,
+                'profile_pic': story.author.profile_pic
+            },
+            'created_at': story.created_at.isoformat()
+        }
+        stories_data.append(story_dict)
+    
+    return jsonify({
+        'posts': posts_data,
+        'stories': stories_data
+    })
 
-@app.route('/api/posts/<int:page>')
+@app.route('/api/reels')
 @login_required
-def api_posts(page):
-    posts = Post.query.order_by(Post.timestamp.desc()).offset(page*10).limit(10).all()
-    return render_template('post_snippet.html', posts=posts)
-
-@app.route('/reels')
-@login_required
-def reels():
-    reels = Reel.query.order_by(Reel.timestamp.desc()).all()
-    return render_template('reels.html', reels=reels)
-
-@app.route('/friends')
-@login_required
-def friends():
-    return render_template('friends.html')
-
-@app.route('/api/followers')
-@login_required
-def api_followers():
-    user = User.query.get(session['user_id'])
-    followers = Follow.query.filter_by(followed_id=user.id, status='following').all()
-    users = [User.query.get(f.follower_id) for f in followers]
-    return render_template('user_list.html', users=users, type='followers')
-
-@app.route('/api/following')
-@login_required
-def api_following():
-    user = User.query.get(session['user_id'])
-    following = Follow.query.filter_by(follower_id=user.id, status='following').all()
-    users = [User.query.get(f.followed_id) for f in following]
-    return render_template('user_list.html', users=users, type='following')
+def api_reels():
+    reels = Reel.query.order_by(Reel.created_at.desc()).all()
+    
+    reels_data = []
+    for reel in reels:
+        reel_dict = {
+            'id': reel.id,
+            'content': reel.content,
+            'media_url': reel.media_url,
+            'user': {
+                'id': reel.author.id,
+                'username': reel.author.username,
+                'real_name': reel.author.real_name,
+                'profile_pic': reel.author.profile_pic
+            },
+            'created_at': reel.created_at.isoformat(),
+            'likes_count': reel.likes.count(),
+            'comments_count': reel.comments.count(),
+            'shares_count': reel.shares.count(),
+            'is_liked': reel.likes.filter_by(user_id=session['user_id']).first() is not None,
+            'is_saved': reel.saves.filter_by(user_id=session['user_id']).first() is not None
+        }
+        reels_data.append(reel_dict)
+    
+    return jsonify({'reels': reels_data})
 
 @app.route('/api/friends')
 @login_required
 def api_friends():
     user_id = session['user_id']
-    mutuals = db.session.query(User).join(Follow, Follow.followed_id == User.id).filter(Follow.follower_id == user_id, Follow.status=='following').join(Follow, Follow.follower_id == User.id, Follow.followed_id == user_id, Follow.status=='following').all()
-    return render_template('user_list.html', users=mutuals, type='friends')
+    
+    # Get followers
+    followers = Follow.query.filter_by(followed_id=user_id).all()
+    followers_data = []
+    for follow in followers:
+        follower = User.query.get(follow.follower_id)
+        mutual_count = get_mutual_friends_count(user_id, follower.id)
+        followers_data.append({
+            'id': follower.id,
+            'username': follower.username,
+            'real_name': follower.real_name,
+            'profile_pic': follower.profile_pic,
+            'mutual_count': mutual_count
+        })
+    
+    # Get following
+    following = Follow.query.filter_by(follower_id=user_id).all()
+    following_data = []
+    for follow in following:
+        followed = User.query.get(follow.followed_id)
+        mutual_count = get_mutual_friends_count(user_id, followed.id)
+        following_data.append({
+            'id': followed.id,
+            'username': followed.username,
+            'real_name': followed.real_name,
+            'profile_pic': followed.profile_pic,
+            'mutual_count': mutual_count
+        })
+    
+    # Get friends (mutual follows)
+    friends_data = []
+    for follow in following:
+        # Check if the followed user also follows back
+        if Follow.query.filter_by(follower_id=follow.followed_id, followed_id=user_id).first():
+            friend = User.query.get(follow.followed_id)
+            mutual_count = get_mutual_friends_count(user_id, friend.id)
+            friends_data.append({
+                'id': friend.id,
+                'username': friend.username,
+                'real_name': friend.real_name,
+                'profile_pic': friend.profile_pic,
+                'mutual_count': mutual_count
+            })
+    
+    # Get friend requests
+    # This would require a separate FriendRequest model which we haven't implemented
+    # For now, we'll return empty list
+    friend_requests_data = []
+    
+    # Get suggested friends (users with mutual friends)
+    suggested_data = get_suggested_friends(user_id)
+    
+    return jsonify({
+        'followers': followers_data,
+        'following': following_data,
+        'friends': friends_data,
+        'friend_requests': friend_requests_data,
+        'suggested': suggested_data
+    })
 
-@app.route('/api/friend_requests')
-@login_required
-def api_friend_requests():
-    user = User.query.get(session['user_id'])
-    requests = Follow.query.filter_by(followed_id=user.id, status='requested').all()
-    users = [User.query.get(f.follower_id) for f in requests]
-    return render_template('user_list.html', users=users, type='requests')
+def get_mutual_friends_count(user1_id, user2_id):
+    # Get users that both user1 and user2 follow
+    user1_following = {f.followed_id for f in Follow.query.filter_by(follower_id=user1_id).all()}
+    user2_following = {f.followed_id for f in Follow.query.filter_by(follower_id=user2_id).all()}
+    
+    # Get users that follow both user1 and user2
+    user1_followers = {f.follower_id for f in Follow.query.filter_by(followed_id=user1_id).all()}
+    user2_followers = {f.follower_id for f in Follow.query.filter_by(followed_id=user2_id).all()}
+    
+    # Mutual follows (both following each other)
+    mutual_follows = user1_following.intersection(user2_followers).union(
+        user2_following.intersection(user1_followers)
+    )
+    
+    return len(mutual_follows)
 
-@app.route('/api/suggested')
+def get_suggested_friends(user_id):
+    # Get users followed by people you follow
+    user_following = [f.followed_id for f in Follow.query.filter_by(follower_id=user_id).all()]
+    
+    suggested = set()
+    for followed_id in user_following:
+        # Get users that this person follows
+        their_following = [f.followed_id for f in Follow.query.filter_by(follower_id=followed_id).all()]
+        
+        for potential_friend_id in their_following:
+            # Don't suggest yourself or people you already follow
+            if potential_friend_id != user_id and potential_friend_id not in user_following:
+                # Check if not already friends (mutual follow)
+                if not Follow.query.filter_by(follower_id=potential_friend_id, followed_id=user_id).first():
+                    suggested.add(potential_friend_id)
+    
+    suggested_data = []
+    for user_id in list(suggested)[:10]:  # Limit to 10 suggestions
+        user = User.query.get(user_id)
+        mutual_count = get_mutual_friends_count(session['user_id'], user_id)
+        suggested_data.append({
+            'id': user.id,
+            'username': user.username,
+            'real_name': user.real_name,
+            'profile_pic': user.profile_pic,
+            'mutual_count': mutual_count
+        })
+    
+    return suggested_data
+
+@app.route('/api/inbox')
 @login_required
-def api_suggested():
+def api_inbox():
     user_id = session['user_id']
-    my_following = [f.followed_id for f in Follow.query.filter_by(follower_id=user_id, status='following').all()]
-    suggested = db.session.query(User).join(Follow, Follow.followed_id == User.id).filter(Follow.follower_id.in_(my_following), User.id.notin_(my_following), User.id != user_id).group_by(User.id).order_by(db.func.count().desc()).limit(10).all()
-    return render_template('user_list.html', users=suggested, type='suggested')
+    
+    # Get direct messages
+    direct_messages = Message.query.filter(
+        ((Message.sender_id == user_id) & (Message.receiver_id != None)) | 
+        ((Message.receiver_id == user_id) & (Message.sender_id != None))
+    ).order_by(Message.created_at.desc()).all()
+    
+    # Group messages by conversation
+    conversations = {}
+    for msg in direct_messages:
+        other_user_id = msg.sender_id if msg.sender_id != user_id else msg.receiver_id
+        if other_user_id not in conversations:
+            conversations[other_user_id] = {
+                'user': User.query.get(other_user_id),
+                'last_message': msg,
+                'unread_count': 0
+            }
+        
+        if not msg.is_read and msg.receiver_id == user_id:
+            conversations[other_user_id]['unread_count'] += 1
+    
+    # Convert to list
+    chats_data = []
+    for other_user_id, conv_data in conversations.items():
+        other_user = conv_data['user']
+        last_msg = conv_data['last_message']
+        chats_data.append({
+            'id': other_user.id,
+            'username': other_user.username,
+            'real_name': other_user.real_name,
+            'profile_pic': other_user.profile_pic,
+            'last_message': last_msg.content[:50] + '...' if len(last_msg.content) > 50 else last_msg.content,
+            'last_message_time': last_msg.created_at.isoformat(),
+            'unread_count': conv_data['unread_count']
+        })
+    
+    # Get group messages
+    user_groups = GroupMember.query.filter_by(user_id=user_id).all()
+    groups_data = []
+    for membership in user_groups:
+        group = membership.group
+        last_message = Message.query.filter_by(group_id=group.id).order_by(Message.created_at.desc()).first()
+        
+        if last_message:
+            groups_data.append({
+                'id': group.id,
+                'name': group.name,
+                'profile_pic': group.profile_pic,
+                'last_message': last_message.content[:50] + '...' if len(last_message.content) > 50 else last_message.content,
+                'last_message_time': last_message.created_at.isoformat(),
+                'unread_count': 0  # Would need to track read status for groups
+            })
+    
+    return jsonify({
+        'chats': chats_data,
+        'groups': groups_data
+    })
 
-@app.route('/api/follow/<int:user_id>', methods=['POST'])
+@app.route('/api/profile/<int:user_id>')
 @login_required
-def api_follow(user_id):
-    current_user = session['user_id']
-    if current_user == user_id:
-        return jsonify({'error': 'Cannot follow self'}), 400
-    existing = Follow.query.filter_by(follower_id=current_user, followed_id=user_id).first()
-    if existing and existing.status == 'blocked':
-        return jsonify({'error': 'Blocked'}), 400
-    if not existing:
-        follow = Follow(follower_id=current_user, followed_id=user_id, status='requested')
-        db.session.add(follow)
-        db.session.commit()
-        notif = Notification(user_id=user_id, type='friend_request', content=f'{User.query.get(current_user).username} sent friend request', link=url_for('friends'))
-        db.session.add(notif)
-        db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/accept_request/<int:user_id>', methods=['POST'])
-@login_required
-def api_accept_request(user_id):
-    current_user = session['user_id']
-    request_follow = Follow.query.filter_by(follower_id=user_id, followed_id=current_user, status='requested').first()
-    if request_follow:
-        request_follow.status = 'following'
-        reciprocal = Follow.query.filter_by(follower_id=current_user, followed_id=user_id).first()
-        if not reciprocal:
-            reciprocal = Follow(follower_id=current_user, followed_id=user_id, status='following')
-            db.session.add(reciprocal)
-        db.session.commit()
-        notif = Notification(user_id=user_id, type='friend_accept', content=f'{User.query.get(current_user).username} accepted your friend request')
-        db.session.add(notif)
-        db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/decline_request/<int:user_id>', methods=['POST'])
-@login_required
-def api_decline_request(user_id):
-    current_user = session['user_id']
-    request_follow = Follow.query.filter_by(follower_id=user_id, followed_id=current_user, status='requested').first()
-    if request_follow:
-        db.session.delete(request_follow)
-        db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/unfollow/<int:user_id>', methods=['POST'])
-@login_required
-def api_unfollow(user_id):
-    current_user = session['user_id']
-    follow = Follow.query.filter_by(follower_id=current_user, followed_id=user_id, status='following').first()
-    if follow:
-        db.session.delete(follow)
-        db.session.commit()
-    reciprocal = Follow.query.filter_by(follower_id=user_id, followed_id=current_user).first()
-    if reciprocal:
-        reciprocal.status = 'requested'
-        db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/block/<int:user_id>', methods=['POST'])
-@login_required
-def api_block(user_id):
-    current_user = session['user_id']
-    follow = Follow.query.filter_by(follower_id=current_user, followed_id=user_id).first()
-    if follow:
-        follow.status = 'blocked'
-    else:
-        follow = Follow(follower_id=current_user, followed_id=user_id, status='blocked')
-        db.session.add(follow)
-    db.session.commit()
-    reciprocal = Follow.query.filter_by(follower_id=user_id, followed_id=current_user).first()
-    if reciprocal:
-        db.session.delete(reciprocal)
-        db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/inbox')
-@login_required
-def inbox():
-    return render_template('inbox.html')
-
-@app.route('/api/chats')
-@login_required
-def api_chats():
-    user_id = session['user_id']
-    chat_partners = db.session.query(Message.receiver_id).filter(Message.sender_id == user_id).union(db.session.query(Message.sender_id).filter(Message.receiver_id == user_id)).all()
-    chat_users = [User.query.get(p[0]) for p in chat_partners]
-    return render_template('chat_list.html', chat_users=chat_users)
-
-@app.route('/api/groups')
-@login_required
-def api_groups():
-    user_id = session['user_id']
-    user_groups = Group.query.join(GroupMember).filter(GroupMember.user_id == user_id).all()
-    return render_template('group_list.html', groups=user_groups)
-
-@app.route('/api/chat/<int:user_id>')
-@login_required
-def api_chat(user_id):
-    current_user = session['user_id']
-    messages = Message.query.filter(((Message.sender_id == current_user) & (Message.receiver_id == user_id)) | ((Message.sender_id == user_id) & (Message.receiver_id == current_user))).order_by(Message.timestamp).all()
-    for msg in messages:
-        if msg.receiver_id == current_user and not msg.is_read:
-            msg.is_read = True
-    db.session.commit()
-    return render_template('chat_modal.html', messages=messages, chat_user=User.query.get(user_id))
-
-@app.route('/api/group_chat/<int:group_id>')
-@login_required
-def api_group_chat(group_id):
-    current_user = session['user_id']
-    messages = Message.query.filter_by(group_id=group_id).order_by(Message.timestamp).all()
-    for msg in messages:
-        if not msg.is_read and msg.sender_id != current_user:
-            msg.is_read = True  # but for groups, perhaps separate read per user, but simplify
-    db.session.commit()
-    return render_template('group_chat_modal.html', messages=messages, group=Group.query.get(group_id))
-
-@app.route('/api/send_message', methods=['POST'])
-@login_required
-def api_send_message():
-    receiver_id = request.form.get('receiver_id')
-    group_id = request.form.get('group_id')
-    content = request.form.get('content')
-    file = request.files.get('file')
-    media_url = None
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        media_url = filename
-    msg = Message(sender_id=session['user_id'], content=content, media_url=media_url)
-    if receiver_id:
-        msg.receiver_id = receiver_id
-    elif group_id:
-        msg.group_id = group_id
-        group = Group.query.get(group_id)
-        member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-        if not group.allow_send and not member.is_admin:
-            return jsonify({'error': 'No permission'}), 403
-    db.session.add(msg)
-    db.session.commit()
-    if receiver_id:
-        notif = Notification(user_id=receiver_id, type='message', content='New message')
-        db.session.add(notif)
-        db.session.commit()
-    elif group_id:
-        members = GroupMember.query.filter_by(group_id=group_id).all()
-        for m in members:
-            if m.user_id != session['user_id']:
-                notif = Notification(user_id=m.user_id, type='group_message', content='New group message')
-                db.session.add(notif)
-        db.session.commit()
-    return jsonify({'success': True, 'msg_id': msg.id})
-
-@app.route('/api/profile/<username>')
-@login_required
-def api_profile(username):
-    user = User.query.filter_by(username=username).first()
-    if not user:
-        return 'Not found', 404
+def api_profile(user_id):
+    user = User.query.get_or_404(user_id)
     current_user_id = session['user_id']
-    is_own_profile = user.id == current_user_id
-    posts = Post.query.filter_by(user_id=user.id).order_by(Post.created_at.desc()).limit(10).all()
-    friends_query = db.session.query(Follow).select_from(Follow).join(User, or_(Follow.follower_id == User.id, Follow.followed_id == User.id)).filter(or_(Follow.follower_id == user.id, Follow.followed_id == user.id), Follow.status == 'following')
-    friends = friends_query.count()
-    is_friend = Follow.query.filter(or_(and_(Follow.follower_id == current_user_id, Follow.followed_id == user.id), and_(Follow.follower_id == user.id, Follow.followed_id == current_user_id)), Follow.status == 'following').first() is not None
-    is_following = Follow.query.filter_by(follower_id=current_user_id, followed_id=user.id, status='following').first() is not None
-    is_pending = Follow.query.filter_by(follower_id=current_user_id, followed_id=user.id, status='pending').first() is not None
-    stories = Story.query.filter_by(user_id=user.id).order_by(Story.created_at.desc()).limit(10).all()
-    template = 'profile_own_modal.html' if is_own_profile else 'profile_other_modal.html'
-    return render_template(template, user=user, posts=posts, friends=friends, is_friend=is_friend, is_following=is_following, is_pending=is_pending, stories=stories)
-@app.route('/api/group_profile/<int:group_id>')
-@login_required
-def api_group_profile(group_id):
-    group = Group.query.get(group_id)
-    if not group:
-        return 'Not found', 404
-    current_user_id = session['user_id']
-    member = GroupMember.query.filter_by(group_id=group_id, user_id=current_user_id).first()
-    is_member = bool(member)
-    is_admin = member.is_admin if member else False
-    members = GroupMember.query.filter_by(group_id=group_id).limit(10).all()
-    media = Message.query.filter_by(group_id=group_id).filter(Message.media_url != None).all()
-    return render_template('group_profile_modal.html', group=group, is_admin=is_admin, members=members, media=media)
-
-@app.route('/api/edit_profile', methods=['POST'])
-@login_required
-def api_edit_profile():
-    user = User.query.get(session['user_id'])
-    user.real_name = request.form.get('real_name', user.real_name)
-    user.bio = request.form.get('bio', user.bio)
-    # other fields...
-    file = request.files.get('profile_pic')
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        user.profile_pic = filename
-    db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/search')
-@login_required
-def search():
-    return render_template('search.html')
+    
+    # Check if user is viewing their own profile
+    is_own_profile = user_id == current_user_id
+    
+    # Get counts
+    followers_count = Follow.query.filter_by(followed_id=user_id).count()
+    following_count = Follow.query.filter_by(follower_id=user_id).count()
+    posts_count = Post.query.filter_by(user_id=user_id).count()
+    
+    # Get mutual friends count if not own profile
+    mutual_count = 0
+    if not is_own_profile:
+        mutual_count = get_mutual_friends_count(current_user_id, user_id)
+    
+    # Check if current user follows this user
+    is_following = Follow.query.filter_by(follower_id=current_user_id, followed_id=user_id).first() is not None
+    
+    # Get user posts
+    posts = Post.query.filter_by(user_id=user_id, is_private=False).order_by(Post.created_at.desc()).all()
+    posts_data = []
+    for post in posts:
+        post_dict = {
+            'id': post.id,
+            'content': post.content,
+            'media_url': post.media_url,
+            'media_type': post.media_type,
+            'created_at': post.created_at.isoformat(),
+            'likes_count': post.likes.count(),
+            'comments_count': post.comments.count()
+        }
+        posts_data.append(post_dict)
+    
+    # Get user reels
+    reels = Reel.query.filter_by(user_id=user_id).order_by(Reel.created_at.desc()).all()
+    reels_data = []
+    for reel in reels:
+        reel_dict = {
+            'id': reel.id,
+            'content': reel.content,
+            'media_url': reel.media_url,
+            'created_at': reel.created_at.isoformat(),
+            'likes_count': reel.likes.count(),
+            'comments_count': reel.comments.count()
+        }
+        reels_data.append(reel_dict)
+    
+    profile_data = {
+        'id': user.id,
+        'username': user.username,
+        'real_name': user.real_name,
+        'profile_pic': user.profile_pic,
+        'bio': user.bio,
+        'unique_key': user.unique_key if is_own_profile else None,
+        'followers_count': followers_count,
+        'following_count': following_count,
+        'posts_count': posts_count,
+        'is_own_profile': is_own_profile,
+        'is_following': is_following,
+        'mutual_count': mutual_count,
+        'posts': posts_data,
+        'reels': reels_data,
+        # Additional profile info
+        'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
+        'gender': user.gender,
+        'pronouns': user.pronouns,
+        'work': user.work,
+        'education': user.education,
+        'location': user.location,
+        'website': user.website,
+        'relationship': user.relationship,
+        'spouse': user.spouse
+    }
+    
+    return jsonify(profile_data)
 
 @app.route('/api/search')
 @login_required
 def api_search():
-    q = request.args.get('q')
+    query = request.args.get('q', '')
     tab = request.args.get('tab', 'all')
-    if tab == 'users' or tab == 'all':
-        users = User.query.filter(User.username.ilike(f'%{q}%') | User.real_name.ilike(f'%{q}%')).all()
-    if tab == 'groups' or tab == 'all':
-        groups = Group.query.filter(Group.name.ilike(f'%{q}%')).all()
-    if tab == 'posts' or tab == 'all':
-        posts = Post.query.filter(Post.content.ilike(f'%{q}%')).all()
-    if tab == 'reels' or tab == 'all':
-        reels = Reel.query.filter(Reel.description.ilike(f'%{q}%')).all()
-    if tab != 'all':
-        if tab == 'users':
-            return render_template('search_users.html', users=users)
-        elif tab == 'groups':
-            return render_template('search_groups.html', groups=groups)
-        elif tab == 'posts':
-            return render_template('search_posts.html', posts=posts)
-        elif tab == 'reels':
-            return render_template('search_reels.html', reels=reels)
-    return render_template('search_all.html', users=users, groups=groups, posts=posts, reels=reels)
+    
+    results = {}
+    
+    if tab == 'all' or tab == 'users':
+        users = User.query.filter(
+            (User.username.ilike(f'%{query}%')) | 
+            (User.real_name.ilike(f'%{query}%'))
+        ).all()
+        
+        users_data = []
+        for user in users:
+            users_data.append({
+                'id': user.id,
+                'username': user.username,
+                'real_name': user.real_name,
+                'profile_pic': user.profile_pic
+            })
+        
+        results['users'] = users_data
+    
+    if tab == 'all' or tab == 'groups':
+        groups = Group.query.filter(Group.name.ilike(f'%{query}%')).all()
+        
+        groups_data = []
+        for group in groups:
+            groups_data.append({
+                'id': group.id,
+                'name': group.name,
+                'profile_pic': group.profile_pic,
+                'members_count': group.members.count()
+            })
+        
+        results['groups'] = groups_data
+    
+    if tab == 'all' or tab == 'posts':
+        posts = Post.query.filter(
+            (Post.content.ilike(f'%{query}%')) & 
+            (Post.is_private == False)
+        ).all()
+        
+        posts_data = []
+        for post in posts:
+            posts_data.append({
+                'id': post.id,
+                'content': post.content,
+                'media_url': post.media_url,
+                'media_type': post.media_type,
+                'user': {
+                    'id': post.author.id,
+                    'username': post.author.username,
+                    'real_name': post.author.real_name,
+                    'profile_pic': post.author.profile_pic
+                },
+                'created_at': post.created_at.isoformat(),
+                'likes_count': post.likes.count()
+            })
+        
+        results['posts'] = posts_data
+    
+    if tab == 'all' or tab == 'reels':
+        reels = Reel.query.filter(Reel.content.ilike(f'%{query}%')).all()
+        
+        reels_data = []
+        for reel in reels:
+            reels_data.append({
+                'id': reel.id,
+                'content': reel.content,
+                'media_url': reel.media_url,
+                'user': {
+                    'id': reel.author.id,
+                    'username': reel.author.username,
+                    'real_name': reel.author.real_name,
+                    'profile_pic': reel.author.profile_pic
+                },
+                'created_at': reel.created_at.isoformat(),
+                'likes_count': reel.likes.count()
+            })
+        
+        results['reels'] = reels_data
+    
+    return jsonify(results)
 
-@app.route('/add_to')
+@app.route('/api/notifications')
 @login_required
-def add_to():
-    return render_template('add_to.html')
+def api_notifications():
+    user_id = session['user_id']
+    notifications = Notification.query.filter_by(user_id=user_id).order_by(Notification.created_at.desc()).limit(50).all()
+    
+    notifications_data = []
+    for notification in notifications:
+        notifications_data.append({
+            'id': notification.id,
+            'content': notification.content,
+            'type': notification.type,
+            'is_read': notification.is_read,
+            'created_at': notification.created_at.isoformat()
+        })
+    
+    return jsonify({'notifications': notifications_data})
 
-@app.route('/api/create_post', methods=['POST'])
+@app.route('/api/admin/dashboard')
+@admin_required
+def api_admin_dashboard():
+    # Get all users
+    users = User.query.all()
+    users_data = []
+    for user in users:
+        users_data.append({
+            'id': user.id,
+            'username': user.username,
+            'real_name': user.real_name,
+            'email': user.email,
+            'created_at': user.created_at.isoformat(),
+            'is_admin': user.is_admin,
+            'posts_count': user.posts.count(),
+            'followers_count': user.followers.count(),
+            'following_count': user.following.count()
+        })
+    
+    # Get all groups
+    groups = Group.query.all()
+    groups_data = []
+    for group in groups:
+        groups_data.append({
+            'id': group.id,
+            'name': group.name,
+            'created_by': group.created_by,
+            'created_at': group.created_at.isoformat(),
+            'members_count': group.members.count(),
+            'messages_count': group.messages.count()
+        })
+    
+    # Get pending reports
+    reports = Report.query.filter_by(status='pending').all()
+    reports_data = []
+    for report in reports:
+        reports_data.append({
+            'id': report.id,
+            'reporter': User.query.get(report.reporter_id).username,
+            'reason': report.reason,
+            'created_at': report.created_at.isoformat()
+        })
+    
+    # Get statistics
+    total_users = User.query.count()
+    total_posts = Post.query.count()
+    total_reels = Reel.query.count()
+    total_groups = Group.query.count()
+    total_messages = Message.query.count()
+    
+    return jsonify({
+        'users': users_data,
+        'groups': groups_data,
+        'reports': reports_data,
+        'stats': {
+            'total_users': total_users,
+            'total_posts': total_posts,
+            'total_reels': total_reels,
+            'total_groups': total_groups,
+            'total_messages': total_messages
+        }
+    })
+
+# Action routes (follow, like, comment, etc.)
+@app.route('/api/follow/<int:user_id>', methods=['POST'])
+@login_required
+def api_follow(user_id):
+    current_user_id = session['user_id']
+    
+    if current_user_id == user_id:
+        return jsonify({'success': False, 'message': 'Cannot follow yourself'})
+    
+    # Check if already following
+    existing_follow = Follow.query.filter_by(follower_id=current_user_id, followed_id=user_id).first()
+    if existing_follow:
+        return jsonify({'success': False, 'message': 'Already following'})
+    
+    # Create follow relationship
+    follow = Follow(follower_id=current_user_id, followed_id=user_id)
+    db.session.add(follow)
+    
+    # Create notification
+    followed_user = User.query.get(user_id)
+    notification = Notification(
+        user_id=user_id,
+        content=f'{User.query.get(current_user_id).username} started following you',
+        type='follow'
+    )
+    db.session.add(notification)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Followed successfully'})
+
+@app.route('/api/unfollow/<int:user_id>', methods=['POST'])
+@login_required
+def api_unfollow(user_id):
+    current_user_id = session['user_id']
+    
+    follow = Follow.query.filter_by(follower_id=current_user_id, followed_id=user_id).first()
+    if not follow:
+        return jsonify({'success': False, 'message': 'Not following this user'})
+    
+    db.session.delete(follow)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Unfollowed successfully'})
+
+@app.route('/api/like/post/<int:post_id>', methods=['POST'])
+@login_required
+def api_like_post(post_id):
+    current_user_id = session['user_id']
+    
+    # Check if already liked
+    existing_like = Like.query.filter_by(user_id=current_user_id, post_id=post_id).first()
+    if existing_like:
+        return jsonify({'success': False, 'message': 'Already liked'})
+    
+    # Create like
+    like = Like(user_id=current_user_id, post_id=post_id)
+    db.session.add(like)
+    
+    # Create notification
+    post = Post.query.get(post_id)
+    if post.user_id != current_user_id:  # Don't notify yourself
+        notification = Notification(
+            user_id=post.user_id,
+            content=f'{User.query.get(current_user_id).username} liked your post',
+            type='like',
+            reference_id=post_id
+        )
+        db.session.add(notification)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Liked successfully'})
+
+@app.route('/api/unlike/post/<int:post_id>', methods=['POST'])
+@login_required
+def api_unlike_post(post_id):
+    current_user_id = session['user_id']
+    
+    like = Like.query.filter_by(user_id=current_user_id, post_id=post_id).first()
+    if not like:
+        return jsonify({'success': False, 'message': 'Not liked'})
+    
+    db.session.delete(like)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Unliked successfully'})
+
+@app.route('/api/comment/post/<int:post_id>', methods=['POST'])
+@login_required
+def api_comment_post(post_id):
+    current_user_id = session['user_id']
+    content = request.form.get('content')
+    
+    if not content:
+        return jsonify({'success': False, 'message': 'Comment cannot be empty'})
+    
+    # Create comment
+    comment = Comment(user_id=current_user_id, post_id=post_id, content=content)
+    db.session.add(comment)
+    
+    # Create notification
+    post = Post.query.get(post_id)
+    if post.user_id != current_user_id:  # Don't notify yourself
+        notification = Notification(
+            user_id=post.user_id,
+            content=f'{User.query.get(current_user_id).username} commented on your post: {content[:50]}...',
+            type='comment',
+            reference_id=post_id
+        )
+        db.session.add(notification)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Commented successfully'})
+
+@app.route('/api/create-post', methods=['POST'])
 @login_required
 def api_create_post():
+    current_user_id = session['user_id']
     content = request.form.get('content')
-    privacy = request.form.get('privacy', 'all')
-    file = request.files.get('file')
+    is_private = request.form.get('is_private') == 'true'
+    
+    if not content:
+        return jsonify({'success': False, 'message': 'Content cannot be empty'})
+    
+    # Handle file upload
     media_url = None
     media_type = None
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        media_url = filename
-        if filename.lower().endswith(('.jpg', '.png', '.gif')):
-            media_type = 'image'
-        elif filename.lower().endswith(('.mp4', '.avi')):
-            media_type = 'video'
-    post = Post(user_id=session['user_id'], content=content, media_url=media_url, media_type=media_type, privacy=privacy)
+    if 'media' in request.files:
+        file = request.files['media']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            media_url = unique_filename
+            
+            # Determine media type
+            ext = filename.rsplit('.', 1)[1].lower()
+            if ext in ['jpg', 'jpeg', 'png', 'gif']:
+                media_type = 'image'
+            elif ext in ['mp4', 'mov', 'avi']:
+                media_type = 'video'
+    
+    # Create post
+    post = Post(
+        user_id=current_user_id,
+        content=content,
+        media_url=media_url,
+        media_type=media_type,
+        is_private=is_private
+    )
     db.session.add(post)
     db.session.commit()
-    return jsonify({'success': True})
+    
+    return jsonify({'success': True, 'message': 'Post created successfully'})
 
-@app.route('/api/create_reel', methods=['POST'])
+@app.route('/api/create-reel', methods=['POST'])
 @login_required
 def api_create_reel():
-    description = request.form.get('description')
-    file = request.files.get('file')
-    if not file or not file.filename.lower().endswith(('.mp4', '.avi')):
-        return jsonify({'error': 'Video required'}), 400
+    current_user_id = session['user_id']
+    content = request.form.get('content', '')
+    
+    # Handle file upload
+    if 'media' not in request.files:
+        return jsonify({'success': False, 'message': 'Media file is required'})
+    
+    file = request.files['media']
+    if not file or not allowed_file(file.filename):
+        return jsonify({'success': False, 'message': 'Invalid media file'})
+    
     filename = secure_filename(file.filename)
-    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    reel = Reel(user_id=session['user_id'], video_url=filename, description=description)
+    unique_filename = f"{uuid.uuid4().hex}_{filename}"
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+    
+    # Create reel
+    reel = Reel(
+        user_id=current_user_id,
+        content=content,
+        media_url=unique_filename
+    )
     db.session.add(reel)
     db.session.commit()
-    return jsonify({'success': True})
+    
+    return jsonify({'success': True, 'message': 'Reel created successfully'})
 
-@app.route('/api/create_story', methods=['POST'])
+@app.route('/api/send-message', methods=['POST'])
 @login_required
-def api_create_story():
-    file = request.files.get('file')
+def api_send_message():
+    current_user_id = session['user_id']
+    receiver_id = request.form.get('receiver_id')
+    group_id = request.form.get('group_id')
+    content = request.form.get('content')
+    
+    if not content and 'media' not in request.files:
+        return jsonify({'success': False, 'message': 'Message cannot be empty'})
+    
+    # Handle file upload
     media_url = None
     media_type = None
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        media_url = filename
-        if filename.lower().endswith(('.jpg', '.png', '.gif')):
-            media_type = 'image'
-        elif filename.lower().endswith(('.mp4', '.avi')):
-            media_type = 'video'
-        elif filename.lower().endswith(('.mp3', '.wav')):
-            media_type = 'audio'
-    story = Story(user_id=session['user_id'], media_url=media_url, media_type=media_type)
-    db.session.add(story)
+    if 'media' in request.files:
+        file = request.files['media']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            media_url = unique_filename
+            
+            # Determine media type
+            ext = filename.rsplit('.', 1)[1].lower()
+            if ext in ['jpg', 'jpeg', 'png', 'gif']:
+                media_type = 'image'
+            elif ext in ['mp4', 'mov', 'avi']:
+                media_type = 'video'
+            elif ext in ['mp3', 'wav', 'ogg']:
+                media_type = 'audio'
+    
+    # Create message
+    message = Message(
+        sender_id=current_user_id,
+        receiver_id=receiver_id if not group_id else None,
+        group_id=group_id,
+        content=content,
+        media_url=media_url,
+        media_type=media_type
+    )
+    db.session.add(message)
+    
+    # Create notification if it's a direct message
+    if receiver_id and int(receiver_id) != current_user_id:
+        notification = Notification(
+            user_id=receiver_id,
+            content=f'{User.query.get(current_user_id).username} sent you a message',
+            type='message'
+        )
+        db.session.add(notification)
+    
     db.session.commit()
-    return jsonify({'success': True})
+    
+    return jsonify({'success': True, 'message': 'Message sent successfully'})
 
-@app.route('/api/view_story/<int:story_id>')
-@login_required
-def api_view_story(story_id):
-    story = Story.query.get(story_id)
-    return render_template('story_modal.html', story=story)
-
-@app.route('/api/like/<string:type_>/<int:item_id>', methods=['POST'])
-@login_required
-def api_like(type_, item_id):
-    user_id = session['user_id']
-    existing = Like.query.filter_by(user_id=user_id, post_id=item_id if type_=='post' else None, reel_id=item_id if type_=='reel' else None).first()
-    if existing:
-        db.session.delete(existing)
-        db.session.commit()
-        return jsonify({'success': True, 'liked': False})
-    like = Like(user_id=user_id)
-    if type_ == 'post':
-        item = Post.query.get(item_id)
-        like.post_id = item_id
-    elif type_ == 'reel':
-        item = Reel.query.get(item_id)
-        like.reel_id = item_id
-    else:
-        return jsonify({'error': 'Invalid type'}), 400
-    if item:
-        db.session.add(like)
-        db.session.commit()
-        notif = Notification(user_id=item.user_id, type='like', content=f'{User.query.get(user_id).username} liked your {type_}')
-        db.session.add(notif)
-        db.session.commit()
-    return jsonify({'success': True, 'liked': True})
-
-@app.route('/api/comment/<string:type_>/<int:item_id>', methods=['POST'])
-@login_required
-def api_comment(type_, item_id):
-    content = request.form['content']
-    comment = Comment(user_id=session['user_id'], content=content)
-    if type_ == 'post':
-        comment.post_id = item_id
-        item = Post.query.get(item_id)
-    elif type_ == 'reel':
-        comment.reel_id = item_id
-        item = Reel.query.get(item_id)
-    db.session.add(comment)
-    db.session.commit()
-    notif = Notification(user_id=item.user_id, type='comment', content=f'{User.query.get(session["user_id"]).username} commented on your {type_}')
-    db.session.add(notif)
-    db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/repost/<string:type_>/<int:item_id>', methods=['POST'])
-@login_required
-def api_repost(type_, item_id):
-    repost = Repost(user_id=session['user_id'])
-    if type_ == 'post':
-        repost.original_post_id = item_id
-        item = Post.query.get(item_id)
-    elif type_ == 'reel':
-        repost.original_reel_id = item_id
-        item = Reel.query.get(item_id)
-    db.session.add(repost)
-    db.session.commit()
-    notif = Notification(user_id=item.user_id, type='repost', content=f'{User.query.get(session["user_id"]).username} reposted your {type_}')
-    db.session.add(notif)
-    db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/save/<string:type_>/<int:item_id>', methods=['POST'])
-@login_required
-def api_save(type_, item_id):
-    save = Save(user_id=session['user_id'])
-    if type_ == 'post':
-        save.post_id = item_id
-    elif type_ == 'reel':
-        save.reel_id = item_id
-    db.session.add(save)
-    db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/report/<string:type_>/<int:item_id>', methods=['POST'])
-@login_required
-def api_report(type_, item_id):
-    description = request.form['description']
-    report = Report(reporter_id=session['user_id'], description=description)
-    if type_ == 'user':
-        report.reported_user_id = item_id
-    elif type_ == 'post':
-        report.reported_post_id = item_id
-    elif type_ == 'group':
-        report.reported_group_id = item_id
-    db.session.add(report)
-    db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/notifications')
-@login_required
-def notifications():
-    notifs = Notification.query.filter_by(user_id=session['user_id']).order_by(Notification.timestamp.desc()).all()
-    for n in notifs:
-        n.is_read = True
-    db.session.commit()
-    return render_template('notifications.html', notifs=notifs)
-
-@app.route('/menu')
-@login_required
-def menu():
-    return render_template('menu.html')
-
-@app.route('/api/change_password', methods=['POST'])
-@login_required
-def api_change_password():
-    old_pass = request.form['old_pass']
-    new_pass = request.form['new_pass']
-    user = User.query.get(session['user_id'])
-    if user.check_password(old_pass):
-        user.set_password(new_pass)
-        db.session.commit()
-        return jsonify({'success': True})
-    return jsonify({'error': 'Invalid old password'}), 400
-
-@app.route('/admin_dashboard')
-@admin_required
-def admin_dashboard():
-    users = User.query.all()
-    groups = Group.query.all()
-    reports = Report.query.all()
-    return render_template('admin_dashboard.html', users=users, groups=groups, reports=reports)
-
-@app.route('/admin/delete_user/<int:user_id>', methods=['POST'])
-@admin_required
-def admin_delete_user(user_id):
-    user = User.query.get(user_id)
-    if user:
-        db.session.delete(user)
-        db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/ban_user/<int:user_id>', methods=['POST'])
-@admin_required
-def admin_ban_user(user_id):
-    user = User.query.get(user_id)
-    if user:
-        user.is_banned = True
-        db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/unban_user/<int:user_id>', methods=['POST'])
-@admin_required
-def admin_unban_user(user_id):
-    user = User.query.get(user_id)
-    if user:
-        user.is_banned = False
-        db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/send_warning/<int:user_id>', methods=['POST'])
-@admin_required
-def admin_send_warning(user_id):
-    content = request.form['content']
-    notif = Notification(user_id=user_id, type='warning', content=content)
-    db.session.add(notif)
-    db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/send_to_all', methods=['POST'])
-@admin_required
-def admin_send_to_all():
-    content = request.form['content']
-    users = User.query.all()
-    for u in users:
-        notif = Notification(user_id=u.id, type='system', content=content)
-        db.session.add(notif)
-    db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/delete_group/<int:group_id>', methods=['POST'])
-@admin_required
-def admin_delete_group(group_id):
-    group = Group.query.get(group_id)
-    if group:
-        db.session.delete(group)
-        db.session.commit()
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/api/create_group', methods=['POST'])
+@app.route('/api/create-group', methods=['POST'])
 @login_required
 def api_create_group():
-    name = request.form['name']
-    file = request.files.get('profile_pic')
-    profile_pic = 'default_group.jpg'
-    if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        profile_pic = filename
-    group = Group(name=name, creator_id=session['user_id'], profile_pic=profile_pic, link=generate_group_link(), description=f'Created by {User.query.get(session["user_id"]).username} on {datetime.now()}')
-    group.allow_edit = 'allow_edit' in request.form
-    group.allow_send = 'allow_send' in request.form
-    group.allow_add = 'allow_add' in request.form
+    current_user_id = session['user_id']
+    name = request.form.get('name')
+    description = request.form.get('description', '')
+    
+    if not name:
+        return jsonify({'success': False, 'message': 'Group name is required'})
+    
+    # Generate unique link
+    import random
+    import string
+    unique_link = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+    
+    # Handle file upload
+    profile_pic = 'default_group.png'
+    if 'profile_pic' in request.files:
+        file = request.files['profile_pic']
+        if file and allowed_file(file.filename, {'png', 'jpg', 'jpeg', 'gif'}):
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            profile_pic = unique_filename
+    
+    # Create group
+    group = Group(
+        name=name,
+        description=description,
+        profile_pic=profile_pic,
+        unique_link=unique_link,
+        created_by=current_user_id
+    )
     db.session.add(group)
-    db.session.commit()
-    member = GroupMember(group_id=group.id, user_id=session['user_id'], is_admin=True)
+    db.session.flush()  # Get the group ID
+    
+    # Add creator as admin member
+    member = GroupMember(
+        user_id=current_user_id,
+        group_id=group.id,
+        is_admin=True
+    )
     db.session.add(member)
     db.session.commit()
-    return jsonify({'success': True, 'group_id': group.id})
+    
+    return jsonify({'success': True, 'message': 'Group created successfully', 'group_id': group.id})
 
-@app.route('/api/join_group/<string:link>')
+@app.route('/api/join-group/<link>', methods=['POST'])
 @login_required
 def api_join_group(link):
-    group = Group.query.filter_by(link=link).first()
-    if group:
-        existing = GroupMember.query.filter_by(group_id=group.id, user_id=session['user_id']).first()
-        if not existing:
-            member = GroupMember(group_id=group.id, user_id=session['user_id'], is_admin=False)
-            if group.approve_members:
-                # send request to admins, but simplify to add
-                pass
-            db.session.add(member)
-            db.session.commit()
-            notif = Notification(user_id=group.creator_id, type='group_join', content=f'{User.query.get(session["user_id"]).username} joined group')
-            db.session.add(notif)
-            db.session.commit()
-    return jsonify({'success': True})
-
-@app.route('/api/leave_group/<int:group_id>', methods=['POST'])
-@login_required
-def api_leave_group(group_id):
-    member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if member:
-        db.session.delete(member)
+    current_user_id = session['user_id']
+    
+    group = Group.query.filter_by(unique_link=link).first()
+    if not group:
+        return jsonify({'success': False, 'message': 'Group not found'})
+    
+    # Check if already a member
+    existing_member = GroupMember.query.filter_by(user_id=current_user_id, group_id=group.id).first()
+    if existing_member:
+        return jsonify({'success': False, 'message': 'Already a member'})
+    
+    # Check if group requires approval
+    if group.approve_new_members:
+        # Create a join request (would need a separate model)
+        return jsonify({'success': False, 'message': 'Join request sent for approval'})
+    else:
+        # Add as member directly
+        member = GroupMember(
+            user_id=current_user_id,
+            group_id=group.id,
+            is_admin=False
+        )
+        db.session.add(member)
         db.session.commit()
-    return jsonify({'success': True})
+        
+        return jsonify({'success': True, 'message': 'Joined group successfully'})
 
-@app.route('/api/add_to_group/<int:group_id>/<int:user_id>', methods=['POST'])
+@app.route('/api/update-profile', methods=['POST'])
 @login_required
-def api_add_to_group(group_id, user_id):
-    group = Group.query.get(group_id)
-    current_member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if group.allow_add or current_member.is_admin:
-        existing = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
-        if not existing:
-            member = GroupMember(group_id=group_id, user_id=user_id)
-            db.session.add(member)
-            db.session.commit()
-            notif = Notification(user_id=user_id, type='group_add', content=f'Added to group {group.name}')
-            db.session.add(notif)
-            db.session.commit()
-    return jsonify({'success': True})
+def api_update_profile():
+    current_user_id = session['user_id']
+    user = User.query.get(current_user_id)
+    
+    # Update basic info
+    user.real_name = request.form.get('real_name', user.real_name)
+    user.bio = request.form.get('bio', user.bio)
+    user.email = request.form.get('email', user.email)
+    
+    # Update additional profile info
+    user.date_of_birth = request.form.get('date_of_birth', user.date_of_birth)
+    user.gender = request.form.get('gender', user.gender)
+    user.pronouns = request.form.get('pronouns', user.pronouns)
+    user.work = request.form.get('work', user.work)
+    user.education = request.form.get('education', user.education)
+    user.location = request.form.get('location', user.location)
+    user.phone_number = request.form.get('phone_number', user.phone_number)
+    user.website = request.form.get('website', user.website)
+    user.relationship = request.form.get('relationship', user.relationship)
+    user.spouse = request.form.get('spouse', user.spouse)
+    
+    # Handle profile picture upload
+    if 'profile_pic' in request.files:
+        file = request.files['profile_pic']
+        if file and allowed_file(file.filename, {'png', 'jpg', 'jpeg', 'gif'}):
+            filename = secure_filename(file.filename)
+            unique_filename = f"{uuid.uuid4().hex}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            user.profile_pic = unique_filename
+    
+    # Update privacy settings
+    user.is_private = request.form.get('is_private') == 'true'
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Profile updated successfully'})
 
-@app.route('/api/remove_from_group/<int:group_id>/<int:user_id>', methods=['POST'])
+@app.route('/api/report', methods=['POST'])
 @login_required
-def api_remove_from_group(group_id, user_id):
-    current_member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if current_member.is_admin:
-        member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
-        if member:
-            db.session.delete(member)
-            db.session.commit()
-    return jsonify({'success': True})
+def api_report():
+    current_user_id = session['user_id']
+    reason = request.form.get('reason')
+    reported_user_id = request.form.get('reported_user_id')
+    reported_post_id = request.form.get('reported_post_id')
+    reported_group_id = request.form.get('reported_group_id')
+    
+    if not reason:
+        return jsonify({'success': False, 'message': 'Reason is required'})
+    
+    if not reported_user_id and not reported_post_id and not reported_group_id:
+        return jsonify({'success': False, 'message': 'Must report a user, post, or group'})
+    
+    # Create report
+    report = Report(
+        reporter_id=current_user_id,
+        reported_user_id=reported_user_id,
+        reported_post_id=reported_post_id,
+        reported_group_id=reported_group_id,
+        reason=reason
+    )
+    db.session.add(report)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Report submitted successfully'})
 
-@app.route('/api/update_group_permissions/<int:group_id>', methods=['POST'])
-@login_required
-def api_update_group_permissions(group_id):
-    group = Group.query.get(group_id)
-    current_member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if current_member.is_admin:
-        group.allow_edit = 'allow_edit' in request.form
-        group.allow_send = 'allow_send' in request.form
-        group.allow_add = 'allow_add' in request.form
-        group.approve_members = 'approve_members' in request.form
-        db.session.commit()
-    return jsonify({'success': True})
+# Admin routes
+@app.route('/api/admin/delete-user/<int:user_id>', methods=['POST'])
+@admin_required
+def api_admin_delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent deleting yourself
+    if user_id == session['user_id']:
+        return jsonify({'success': False, 'message': 'Cannot delete yourself'})
+    
+    # Delete user's data (in a real app, this would be more comprehensive)
+    # For simplicity, we'll just delete the user
+    db.session.delete(user)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'User deleted successfully'})
 
-@app.route('/api/make_group_admin/<int:group_id>/<int:user_id>', methods=['POST'])
-@login_required
-def api_make_group_admin(group_id, user_id):
-    current_member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if current_member.is_admin:
-        member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
-        if member:
-            member.is_admin = True
-            db.session.commit()
-    return jsonify({'success': True})
+@app.route('/api/admin/delete-post/<int:post_id>', methods=['POST'])
+@admin_required
+def api_admin_delete_post(post_id):
+    post = Post.query.get_or_404(post_id)
+    
+    db.session.delete(post)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Post deleted successfully'})
 
-@app.route('/api/remove_group_admin/<int:group_id>/<int:user_id>', methods=['POST'])
-@login_required
-def api_remove_group_admin(group_id, user_id):
-    current_member = GroupMember.query.filter_by(group_id=group_id, user_id=session['user_id']).first()
-    if current_member.is_admin and Group.query.get(group_id).creator_id == session['user_id']:
-        member = GroupMember.query.filter_by(group_id=group_id, user_id=user_id).first()
-        if member:
-            member.is_admin = False
-            db.session.commit()
-    return jsonify({'success': True})
+@app.route('/api/admin/delete-group/<int:group_id>', methods=['POST'])
+@admin_required
+def api_admin_delete_group(group_id):
+    group = Group.query.get_or_404(group_id)
+    
+    db.session.delete(group)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Group deleted successfully'})
 
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+@app.route('/api/admin/resolve-report/<int:report_id>', methods=['POST'])
+@admin_required
+def api_admin_resolve_report(report_id):
+    report = Report.query.get_or_404(report_id)
+    
+    report.status = 'resolved'
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Report resolved successfully'})
 
-with app.app_context():
+# Initialize database
+@app.before_first_request
+def create_tables():
     db.create_all()
-    if not User.query.filter_by(username=ADMIN_USERNAME).first():
-        admin = User(username=ADMIN_USERNAME, is_admin=True, unique_key=generate_unique_key())
-        admin.set_password(ADMIN_PASS)
-        db.session.add(admin)
+    
+    # Create admin user if not exists
+    admin_username = app.config.get('ADMIN_USERNAME', 'Henry')
+    admin_password = app.config.get('ADMIN_PASS', 'Dec@2003')
+    
+    if not User.query.filter_by(username=admin_username).first():
+        admin_user = User(
+            username=admin_username,
+            password=generate_password_hash(admin_password),
+            real_name='Admin User',
+            unique_key='ADMN',
+            is_admin=True
+        )
+        db.session.add(admin_user)
         db.session.commit()
 
 if __name__ == '__main__':
