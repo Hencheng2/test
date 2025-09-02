@@ -1,323 +1,237 @@
-<!-- templates/index.html (adjusted with all modals) -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SociaFam</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-</head>
+<!doctype html>
+<title>Social Media</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<script src="/static/script.js" defer></script>
+
 <body>
     <div class="nav-bar">
-        <button id="homeBtn"><i class="fa fa-home"></i></button>
-        <button id="reelsBtn"><i class="fa fa-video"></i></button>
-        <button id="friendsBtn"><i class="fa fa-users"></i></button>
-        <button id="inboxBtn"><i class="fa fa-envelope"></i></button>
-        <button id="profileBtn"><i class="fa fa-user"></i></button>
-        <button id="searchBtn"><i class="fa fa-search"></i></button>
-        <button id="addBtn"><i class="fa fa-plus"></i></button>
-        <button id="notifBtn"><i class="fa fa-bell"></i></button>
-        <button id="menuBtn"><i class="fa fa-bars"></i></button>
-        <button id="adminBtn" style="display:none;"><i class="fa fa-shield-alt"></i></button>
+        <button id="homeBtn"><i class="fas fa-home"></i></button>
+        <button id="reelsBtn"><i class="fas fa-video"></i></button>
+        <button id="friendsBtn"><i class="fas fa-users"></i></button>
+        <button id="inboxBtn"><i class="fas fa-message"></i></button>
+        <button id="profileBtn"><i class="fas fa-user"></i></button>
+        <button id="searchBtn"><i class="fas fa-search"></i></button>
+        <button id="addBtn"><i class="fas fa-plus"></i></button>
+        <button id="notifBtn"><i class="fas fa-bell"></i></button>
+        <button id="menuBtn"><i class="fas fa-bars"></i></button>
+        <button id="adminBtn" style="display: none;"><i class="fas fa-shield"></i></button>
     </div>
-    <div id="content">Loading...</div>
 
-    <!-- Login Modal -->
+    <div id="content">
+        Loading...
+    </div>
+
+    <!-- Modals -->
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('loginModal')">&times;</span>
             <form id="loginForm">
-                <input id="loginIdentifier" type="text" placeholder="Username/Email" required>
-                <input id="loginPassword" type="password" placeholder="Password" required>
+                <input id="loginIdentifier" placeholder="Username/Email/Phone">
+                <input id="loginPassword" type="password" placeholder="Password">
                 <button type="submit">Login</button>
             </form>
-            <button onclick="showModal('registerModal'); hideModal('loginModal')">Register</button>
-            <button onclick="showModal('forgotModal'); hideModal('loginModal')">Forgot Password</button>
+            <a onclick="showModal('registerModal'); hideModal('loginModal')">Register</a>
+            <a onclick="showModal('forgotModal'); hideModal('loginModal')">Forgot Password</a>
         </div>
     </div>
 
-    <!-- Register Modal -->
     <div id="registerModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('registerModal')">&times;</span>
             <form id="registerForm">
-                <input id="regUsername" type="text" placeholder="Username" required>
-                <input id="regPassword" type="password" placeholder="Password" required>
+                <input id="regUsername" placeholder="Username">
+                <input id="regPassword" type="password" placeholder="Password">
                 <button type="submit">Register</button>
             </form>
         </div>
     </div>
 
-    <!-- Forgot Modal -->
     <div id="forgotModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('forgotModal')">&times;</span>
             <form id="forgotForm">
-                <input id="forgotUsername" type="text" placeholder="Username" required>
-                <input id="forgotKey" type="text" placeholder="Unique Key" required>
+                <input id="forgotUsername" placeholder="Username">
+                <input id="forgotKey" placeholder="Unique Key">
                 <button type="submit">Submit</button>
             </form>
         </div>
     </div>
 
-    <!-- Reset Modal -->
     <div id="resetModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('resetModal')">&times;</span>
             <form id="resetForm">
-                <input id="newPassword" type="password" placeholder="New Password" required>
+                <input id="newPassword" type="password" placeholder="New Password">
                 <button type="submit">Reset</button>
             </form>
         </div>
     </div>
 
-    <!-- Add Content Modal -->
     <div id="addModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('addModal')">&times;</span>
+            <select id="addType">
+                <option value="post">Post</option>
+                <option value="reel">Reel</option>
+                <option value="story">Story</option>
+            </select>
             <form id="addForm">
-                <select id="addType">
-                    <option value="post">Post</option>
-                    <option value="reel">Reel</option>
-                    <option value="story">Story</option>
-                </select>
                 <textarea id="addDescription" placeholder="Description"></textarea>
-                <input id="addMedia" type="file" accept="image/*,video/*">
+                <input id="addMedia" type="file">
                 <button type="submit">Post</button>
             </form>
         </div>
     </div>
 
-    <!-- Story Modal -->
-    <div id="storyModal" class="modal" style="background-color: black;">
-        <div id="storyView" style="height:100vh;"></div>
-    </div>
-
-    <!-- Chat Modal -->
-    <div id="chatModal" class="modal">
-        <div class="modal-content" style="width:100%; max-width: none; margin:0; height:100%; border-radius:0; padding:0;">
-            <div id="chatHeader" style="display:flex; align-items:center; padding:10px; border-bottom:1px solid #ddd;"></div>
-            <div id="chatMessages" style="flex:1; overflow-y:auto;"></div>
-            <div id="chatInputArea">
-                <i class="fa fa-smile" onclick="alert('Stickers')"></i>
-                <i class="fa fa-paperclip" onclick="alert('Attach')"></i>
-                <i class="fa fa-camera" onclick="alert('Camera')"></i>
-                <i class="fa fa-microphone" onclick="alert('Audio')"></i>
-                <input id="chatInput" type="text" placeholder="Message...">
-                <button onclick="sendChat()"><i class="fa fa-paper-plane"></i></button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Chat Dropdown Modal -->
-    <div id="chatDropdownModal" class="modal">
+    <div id="profileEditModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('chatDropdownModal')">&times;</span>
-            <div id="chatDropdownContent"></div>
-        </div>
-    </div>
-
-    <!-- Comment Modal -->
-    <div id="commentModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('commentModal')">&times;</span>
-            <div id="commentList"></div>
-            <form id="commentForm">
-                <input id="commentText" type="text" placeholder="Comment..." required>
-                <button type="submit">Send</button>
+            <span class="close" onclick="hideModal('profileEditModal')">&times;</span>
+            <form id="profileEditForm">
+                <input id="editProfilePic" type="file">
+                <input id="editUsername" placeholder="Username">
+                <textarea id="editBio" placeholder="Bio"></textarea>
+                <input id="editRealName" placeholder="Real Name">
+                <!-- Date of Birth -->
+                <label>Date of Birth</label>
+                <select id="editDay">
+                    <option value="">Day</option>
+                    <!-- Dynamically populated in JS if needed, but for copy, add options -->
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+                    <option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option>
+                    <option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option>
+                </select>
+                <select id="editMonth">
+                    <option value="">Month</option>
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                </select>
+                <input id="editYear" type="number" min="1900" max="2025" placeholder="Year">
+                <!-- Gender -->
+                <select id="editGender">
+                    <option value="">Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+                <!-- Pronouns -->
+                <select id="editPronouns">
+                    <option value="">Pronouns</option>
+                    <option value="He/Him">He/Him</option>
+                    <option value="She/Her">She/Her</option>
+                    <option value="They/Them">They/Them</option>
+                </select>
+                <!-- Work -->
+                <input id="editWork" placeholder="Work">
+                <!-- Education -->
+                <input id="editEducation" placeholder="Education">
+                <!-- Places -->
+                <input id="editPlaces" placeholder="Places Lived">
+                <!-- Phone -->
+                <input id="editPhone" type="tel" placeholder="Phone Number">
+                <!-- Email -->
+                <input id="editEmail" type="email" placeholder="Email">
+                <!-- Social Link -->
+                <input id="editSocial" placeholder="Social Link">
+                <!-- Website -->
+                <input id="editWebsite" placeholder="Website Link">
+                <!-- Relationship -->
+                <select id="editRelationship">
+                    <option value="">Relationship Status</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Engaged">Engaged</option>
+                    <option value="In a relationship">In a relationship</option>
+                    <option value="It's complicated">It's complicated</option>
+                </select>
+                <!-- Spouse -->
+                <input id="editSpouse" placeholder="Spouse/Partner (tag with @username)">
+                <button type="submit">Save</button>
             </form>
         </div>
     </div>
 
-    <!-- Profile Edit Modal -->
-<div id="profileEditModal" class="modal">
-    <div class="modal-content" style="max-width: 600px; overflow-y: auto; max-height: 90vh;">
-        <span class="close" onclick="hideModal('profileEditModal')">&times;</span>
-        <h2>Edit Profile</h2>
-        <form id="profileEditForm">
-            <div style="display: flex; align-items: center; margin-bottom: 20px;">
-                <div style="position: relative;">
-                    <img id="profilePreview" src="/static/default.jpg" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover;">
-                    <label for="profilePhotoUpload" style="position: absolute; bottom: 0; right: 0; background: #1877f2; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                        <i class="fa fa-camera"></i>
-                    </label>
-                    <input id="profilePhotoUpload" type="file" accept="image/*" style="display: none;" onchange="previewProfilePhoto(this)">
-                </div>
-                <div style="margin-left: 15px;">
-                    <input id="editRealName" type="text" placeholder="Real Name" style="margin-bottom: 5px;">
-                    <input id="editUsername" type="text" placeholder="Username" required>
-                </div>
-            </div>
-            
-            <textarea id="editBio" placeholder="Biography (use @ to mention friends)" rows="3"></textarea>
-            
-            <h3>Basic Information</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                <select id="editDobDay">
-                    <option value="">Day</option>
-                    <!-- Days 1-31 will be populated by JS -->
-                </select>
-                <select id="editDobMonth">
-                    <option value="">Month</option>
-                    <option value="1">January</option>
-                    <option value="2">February</option>
-                    <option value="3">March</option>
-                    <option value="4">April</option>
-                    <option value="5">May</option>
-                    <option value="6">June</option>
-                    <option value="7">July</option>
-                    <option value="8">August</option>
-                    <option value="9">September</option>
-                    <option value="10">October</option>
-                    <option value="11">November</option>
-                    <option value="12">December</option>
-                </select>
-                <input id="editDobYear" type="number" placeholder="Year" min="1900" max="2023">
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                <select id="editGender">
-                    <option value="">Gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                </select>
-                <select id="editPronouns">
-                    <option value="">Pronouns</option>
-                    <option value="he/him">He/Him</option>
-                    <option value="she/her">She/Her</option>
-                    <option value="they/them">They/Them</option>
-                </select>
-            </div>
-            
-            <h3>Work & Education</h3>
-            <input id="editWork" type="text" placeholder="Work" style="margin-bottom: 10px;">
-            <input id="editUniversity" type="text" placeholder="University" style="margin-bottom: 10px;">
-            <input id="editSecondary" type="text" placeholder="Secondary School">
-            
-            <h3>Places</h3>
-            <input id="editLocation" type="text" placeholder="Current Location">
-            
-            <h3>Contact Information</h3>
-            <input id="editPhone" type="tel" placeholder="Phone Number" style="margin-bottom: 10px;">
-            <input id="editEmail" type="email" placeholder="Email" style="margin-bottom: 10px;">
-            <input id="editSocialLink" type="url" placeholder="Social Link" style="margin-bottom: 10px;">
-            <input id="editWebsite" type="url" placeholder="Website">
-            
-            <h3>Relationship</h3>
-            <select id="editRelationship" onchange="toggleSpouseField()">
-                <option value="">Relationship Status</option>
-                <option value="single">Single</option>
-                <option value="relationship">In a relationship</option>
-                <option value="engaged">Engaged</option>
-                <option value="married">Married</option>
-            </select>
-            <input id="editSpouse" type="text" placeholder="Spouse/Partner Name" style="display: none; margin-top: 10px;">
-            
-            <button type="submit" style="margin-top: 20px;">Save Changes</button>
-        </form>
-    </div>
-</div>
-
-
-    <!-- Add this modal for sharing profile -->
-<div id="shareProfileModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="hideModal('shareProfileModal')">&times;</span>
-        <h3>Share Profile</h3>
-        <input id="shareProfileLink" type="text" readonly>
-        <button onclick="copyProfileLink()">Copy Link</button>
-        
-        <h4>Share with friends</h4>
-        <div id="shareFriendsList"></div>
-        <button onclick="shareWithSelectedFriends()">Send</button>
-    </div>
-</div>
-
-    <!-- Change Password Modal -->
     <div id="changePasswordModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('changePasswordModal')">&times;</span>
             <form id="changePasswordForm">
-                <input id="oldPassword" type="password" placeholder="Old Password" required>
-                <input id="newPasswordChange" type="password" placeholder="New Password" required>
+                <input id="oldPassword" type="password" placeholder="Old Password">
+                <input id="newPasswordChange" type="password" placeholder="New Password">
                 <button type="submit">Change</button>
             </form>
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div id="settingsModal" class="modal">
+    <div id="commentModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('settingsModal')">&times;</span>
-            <h3>Privacy</h3>
-            <!-- Radio buttons for privacy -->
-            <h3>Notifications</h3>
-            <!-- Checkboxes -->
-            <h3>Theme</h3>
-            <select onchange="applyTheme(this.value)">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-            </select>
-            <button onclick="showModal('changePasswordModal')">Change Password</button>
-            <button onclick="showBlocked()">Blocked</button>
+            <span class="close" onclick="hideModal('commentModal')">&times;</span>
+            <div id="commentList"></div>
+            <form id="commentForm">
+                <textarea id="commentText" placeholder="Comment"></textarea>
+                <button type="submit">Send</button>
+            </form>
         </div>
     </div>
 
-    <!-- Blocked Modal -->
-    <div id="blockedModal" class="modal">
+    <div id="chatModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="hideModal('blockedModal')">&times;</span>
-            <div id="blockedList"></div>
+            <span class="close" onclick="hideModal('chatModal')">&times;</span>
+            <div id="chatHeader"></div>
+            <div id="chatMessages"></div>
+            <form id="chatForm">
+                <input id="chatInput" placeholder="Message">
+                <button type="submit">Send</button>
+            </form>
         </div>
     </div>
 
-    <!-- Support Modal -->
-    <div id="supportModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="hideModal('supportModal')">&times;</span>
-            <textarea placeholder="Message to admin"></textarea>
-            <button onclick="sendSupport()">Send</button>
-        </div>
-    </div>
-
-    <!-- Group Create Modal -->
     <div id="groupCreateModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('groupCreateModal')">&times;</span>
             <form id="groupCreateForm">
-                <input id="groupName" type="text" placeholder="Group Name" required>
+                <input id="groupName" placeholder="Group Name">
                 <textarea id="groupDescription" placeholder="Description"></textarea>
-                <input type="file" accept="image/*">
                 <button type="submit">Create</button>
             </form>
         </div>
     </div>
 
-    <!-- Group Edit Modal -->
     <div id="groupEditModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('groupEditModal')">&times;</span>
             <form id="groupEditForm">
-                <input id="editGroupName" type="text" placeholder="Group Name">
+                <input id="editGroupName" placeholder="Group Name">
                 <textarea id="editGroupDescription" placeholder="Description"></textarea>
                 <button type="submit">Save</button>
             </form>
         </div>
     </div>
 
-    <!-- Report Modal -->
     <div id="reportModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('reportModal')">&times;</span>
             <form id="reportForm">
-                <textarea placeholder="Reason" required></textarea>
+                <textarea id="reportReason" placeholder="Reason"></textarea>
                 <button type="submit">Report</button>
             </form>
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <!-- New Modal for Group Info -->
+    <div id="groupInfoModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('groupInfoModal')">&times;</span>
+            <div id="groupInfo"></div>
+        </div>
+    </div>
+
+    <!-- New Modal for Add Member -->
+    <div id="addMemberModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('addMemberModal')">&times;</span>
+            <input id="addMemberSearch" placeholder="Search users">
+            <div id="addMemberList"></div>
+        </div>
+    </div>
+
 </body>
 </html>
