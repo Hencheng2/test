@@ -1,0 +1,119 @@
+<!-- templates/index.html (Full HTML Code) -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SociaFam</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+</head>
+<body>
+    <div id="content"></div>
+    <div class="nav-bar">
+        <button id="homeBtn" class="nav-button"><i class="fa fa-home"></i></button>
+        <button id="reelsBtn" class="nav-button"><i class="fa fa-video"></i></button>
+        <button id="friendsBtn" class="nav-button"><i class="fa fa-users"></i></button>
+        <button id="inboxBtn" class="nav-button"><i class="fa fa-envelope"></i></button>
+        <button id="profileBtn" class="nav-button"><i class="fa fa-user"></i></button>
+        <button id="searchBtn" class="nav-button"><i class="fa fa-search"></i></button>
+        <button id="addBtn" class="nav-button"><i class="fa fa-plus"></i></button>
+        <button id="notifBtn" class="nav-button"><i class="fa fa-bell"></i></button>
+        <button id="menuBtn" class="nav-button"><i class="fa fa-bars"></i></button>
+        <button id="adminBtn" class="nav-button" style="display:none;"><i class="fa fa-shield-alt"></i></button>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('loginModal')">&times;</span>
+            <h2>Login</h2>
+            <input id="loginIdentifier" placeholder="Username or Email">
+            <input id="loginPassword" type="password" placeholder="Password">
+            <button onclick="login()">Login</button>
+            <p><a onclick="showModal('registerModal'); hideModal('loginModal')">Register</a></p>
+            <p><a onclick="showModal('forgotModal'); hideModal('loginModal')">Forgot Password</a></p>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('registerModal')">&times;</span>
+            <h2>Register</h2>
+            <input id="regUsername" placeholder="Username">
+            <input id="regPassword" type="password" placeholder="Password">
+            <button onclick="register()">Register</button>
+        </div>
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('forgotModal')">&times;</span>
+            <h2>Forgot Password</h2>
+            <input id="forgotUsername" placeholder="Username">
+            <input id="forgotKey" placeholder="Unique Key">
+            <button onclick="forgot()">Submit</button>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div id="resetModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('resetModal')">&times;</span>
+            <h2>Reset Password</h2>
+            <input id="newPassword" type="password" placeholder="New Password">
+            <button onclick="resetPassword()">Reset</button>
+        </div>
+    </div>
+
+    <!-- Add To Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('addModal')">&times;</span>
+            <h2>Add Content</h2>
+            <select id="addType">
+                <option value="post">Post</option>
+                <option value="reel">Reel</option>
+                <option value="story">Story</option>
+            </select>
+            <input type="file" id="addMedia">
+            <textarea id="addDescription" placeholder="Description"></textarea>
+            <button onclick="createPost()">Post</button>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('profileModal')">&times;</span>
+            <!-- Dynamic profile content -->
+            <div id="profileContent"></div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div id="chatModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="hideModal('chatModal')">&times;</span>
+            <!-- Dynamic chat content -->
+            <div id="chatContent"></div>
+            <input id="chatInput" placeholder="Type message">
+            <button onclick="sendChat()">Send</button>
+        </div>
+    </div>
+
+    <!-- Story Modal -->
+    <div id="storyModal" class="modal" style="background-color: black;">
+        <div class="story-view" id="storyView">
+            <!-- Dynamic story content -->
+        </div>
+    </div>
+
+    <!-- Other modals like edit profile, group profile, etc. loaded dynamically -->
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
