@@ -1,9 +1,8 @@
-/* Global styles, colorful like IG/FB */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f0f2f5; /* FB light blue-gray */
+    background-color: #f0f2f5;
     color: #333;
 }
 
@@ -11,85 +10,76 @@ nav {
     position: fixed;
     top: 0;
     width: 100%;
-    background: linear-gradient(to right, #405de6, #5851db, #833ab4, #c13584, #e1306c, #fd1d1d, #f56040, #f77737, #fcaf45, #ffdc80); /* IG gradient */
-    color: white;
+    background: linear-gradient(to right, #405de6, #5851db, #833ab4, #c13584, #e1306c);
     display: flex;
     justify-content: space-around;
     padding: 10px 0;
-    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 1000;
 }
 
 nav button {
     background: none;
     border: none;
     color: white;
-    cursor: pointer;
     font-size: 16px;
+    cursor: pointer;
+    padding: 10px;
+    transition: background-color 0.3s;
 }
 
-nav button i {
-    margin-right: 5px;
+nav button:hover {
+    background-color: rgba(255,255,255,0.1);
 }
 
 .container {
     margin-top: 60px;
     padding: 20px;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .section {
     display: none;
 }
 
-.active {
+.section.active {
     display: block;
 }
 
-/* Stories */
 .stories {
     display: flex;
     overflow-x: auto;
     margin-bottom: 20px;
 }
 
-.story-circle {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: #fff;
+.story {
+    flex: 0 0 auto;
     margin-right: 10px;
-    position: relative;
-    border: 2px solid #db2777; /* Pink gradient border */
-    cursor: pointer;
-}
-
-.story-circle img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-}
-
-.story-circle span {
-    position: absolute;
-    bottom: -20px;
-    left: 0;
-    right: 0;
     text-align: center;
-    font-size: 12px;
-    color: #333;
 }
 
-/* Posts */
+.story img, .story video {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #833ab4;
+}
+
 .post {
     background: white;
-    border-radius: 10px;
     padding: 15px;
     margin-bottom: 15px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .post-header {
     display: flex;
     align-items: center;
+    margin-bottom: 10px;
 }
 
 .post-header img {
@@ -99,307 +89,254 @@ nav button i {
     margin-right: 10px;
 }
 
-.post-header div {
-    flex: 1;
-}
-
-.post-media {
-    width: 100%;
-    max-height: 400px;
-    object-fit: cover;
+.post img, .post video {
+    max-width: 100%;
     border-radius: 8px;
-}
-
-.post-actions {
-    display: flex;
-    justify-content: space-around;
-    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 .post-actions button {
     background: none;
     border: none;
     cursor: pointer;
-    color: #1877f2; /* FB blue */
+    margin-right: 10px;
+    font-size: 14px;
 }
 
-/* Modals */
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
-    left: 0;
     top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0,0,0,0.9);
-    justify-content: center;
-    align-items: center;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 2000;
 }
 
 .modal-content {
-    max-width: 90%;
-    max-height: 90%;
+    background: white;
+    margin: 15% auto;
+    padding: 20px;
+    width: 80%;
+    max-width: 500px;
+    border-radius: 8px;
+    position: relative;
 }
 
 .close {
     position: absolute;
-    top: 20px;
-    right: 30px;
-    color: white;
-    font-size: 40px;
+    top: 10px;
+    right: 10px;
+    font-size: 20px;
     cursor: pointer;
 }
 
-/* Reels */
-.reel {
-    height: 100vh;
+form {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    background: black;
+    gap: 10px;
 }
 
-.reel video {
-    width: 100%;
-    height: auto;
+input, textarea, select {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
 }
 
-.reel-actions {
-    position: absolute;
-    bottom: 50px;
-    right: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+button[type="submit"] {
+    background: #833ab4;
     color: white;
+    border: none;
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
 }
 
-/* Friends list */
-.friends-list {
+button[type="submit"]:hover {
+    background: #c13584;
+}
+
+.friends-list, .chat-list, .notifications-list {
     list-style: none;
     padding: 0;
 }
 
-.friends-list li {
+.friends-list li, .chat-list li, .notifications-list li {
+    padding: 10px;
+    background: white;
+    margin-bottom: 10px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
-    margin-bottom: 10px;
-    background: white;
-    padding: 10px;
-    border-radius: 8px;
+    justify-content: space-between;
 }
 
-.friends-list li img {
-    width: 50px;
-    height: 50px;
+.chat-modal .modal-content {
+    width: 90%;
+    max-width: 600px;
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-navbar {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.chat-navbar img {
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     margin-right: 10px;
 }
 
-.friends-list li div {
-    flex: 1;
-}
-
-.friends-list li button {
-    margin-left: 10px;
-    background: #1877f2;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-/* Inbox */
-.chat-list li {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    background: white;
-    padding: 10px;
-    border-radius: 8px;
-}
-
-.chat-modal {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-.chat-navbar {
-    background: #1877f2;
-    color: white;
-    padding: 10px;
-    display: flex;
-    align-items: center;
-}
-
 .chat-messages {
-    flex: 1;
+    flex-grow: 1;
     overflow-y: auto;
     padding: 10px;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 70%;
+}
+
+.message.sent {
+    background: #833ab4;
+    color: white;
+    margin-left: auto;
+}
+
+.message.received {
+    background: #e0e0e0;
+    margin-right: auto;
 }
 
 .chat-input {
     display: flex;
     padding: 10px;
-    background: white;
-    position: fixed;
-    bottom: 0;
-    width: 100%;
+    border-top: 1px solid #ddd;
 }
 
-.chat-input input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 20px;
+.chat-input input[type="text"] {
+    flex-grow: 1;
+    margin-right: 10px;
 }
 
-/* Profile */
+.chat-input input[type="file"] {
+    width: auto;
+}
+
 .profile-header {
     display: flex;
     align-items: center;
-    padding: 20px;
-    background: white;
+    margin-bottom: 20px;
 }
 
 .profile-pic {
+    position: relative;
+}
+
+.profile-pic img {
     width: 100px;
     height: 100px;
     border-radius: 50%;
-    position: relative;
 }
 
 .profile-pic i {
     position: absolute;
     bottom: 0;
     right: 0;
-    background: #1877f2;
+    background: #833ab4;
     color: white;
     padding: 5px;
     border-radius: 50%;
     cursor: pointer;
 }
 
-.profile-info {
-    margin-left: 20px;
-}
-
 .profile-stats {
     display: flex;
-    justify-content: space-around;
+    gap: 20px;
+    margin-bottom: 20px;
 }
 
 .profile-navbar {
     display: flex;
-    justify-content: space-around;
-    background: #eee;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.profile-navbar button {
+    background: none;
+    border: none;
     padding: 10px;
+    cursor: pointer;
 }
 
-.gallery {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 5px;
+.profile-navbar button.active {
+    border-bottom: 2px solid #833ab4;
 }
 
-.gallery img, .gallery video {
-    width: 100%;
-    height: auto;
-}
-
-/* Search */
 .search-bar {
     width: 100%;
-    padding: 10px;
-    font-size: 16px;
-    border: 1px solid #ddd;
-    border-radius: 20px;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
 }
 
 .tabs {
     display: flex;
-    justify-content: space-around;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
-/* Add to */
-.add-options {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.add-options button {
-    background: #1877f2;
-    color: white;
+.tabs button {
+    background: none;
     border: none;
-    padding: 10px 20px;
-    margin: 10px;
-    border-radius: 5px;
+    padding: 10px;
     cursor: pointer;
 }
 
-/* Notifications */
-.notifications-list {
-    list-style: none;
-    padding: 0;
+.tabs button.active {
+    border-bottom: 2px solid #833ab4;
 }
 
-.notifications-list li {
-    background: white;
-    padding: 10px;
-    margin-bottom: 5px;
-    border-radius: 5px;
+.add-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
-/* Menu */
-.menu-items {
-    list-style: none;
-    padding: 0;
-}
-
-.menu-items li {
-    background: white;
+.add-options button {
+    background: #833ab4;
+    color: white;
+    border: none;
     padding: 15px;
-    margin-bottom: 10px;
     border-radius: 8px;
     cursor: pointer;
 }
 
-/* Admin Dashboard */
+.add-options button:hover {
+    background: #c13584;
+}
+
 .admin-section {
     padding: 20px;
 }
 
-.admin-list {
-    list-style: none;
-    padding: 0;
-}
-
-.admin-list li {
-    background: #333;
-    color: white;
-    padding: 10px;
-    margin-bottom: 5px;
-    border-radius: 5px;
-}
-
-/* Dark theme for admin */
-.admin-section {
-    background: #181818;
-    color: white;
-}
-
-/* Responsive */
 @media (max-width: 600px) {
     nav {
         flex-wrap: wrap;
     }
-    .gallery {
-        grid-template-columns: repeat(2, 1fr);
+    .container {
+        padding: 10px;
+    }
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
     }
 }
