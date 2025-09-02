@@ -1752,9 +1752,11 @@ def share_profile():
     return jsonify({'message': 'Profile shared'})
 
 # Update the user update endpoint to handle all the new fields
+# In app.py, replace the existing update_user endpoint with this updated version
+
 @app.route('/api/user/update', methods=['POST'])
 @login_required
-def update_user():
+def update_user_profile():  # Changed function name to avoid conflict
     user_id = session['user_id']
     data = request.json
     
