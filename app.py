@@ -9,7 +9,7 @@ import datetime
 from sqlalchemy import and_, or_, func, text
 from collections import Counter
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config.from_pyfile('config.py')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sociafam.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -150,19 +150,22 @@ class Report(db.Model):
     description = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-@app.before_first_request
+# Initialize database and admin user at startup
 def initialize_db():
-    db.create_all()
-    admin_username = app.config.get('ADMIN_USERNAME', 'Henry')
-    admin_pass = app.config.get('ADMIN_PASS', 'Dec@2003')
-    if not User.query.filter_by(username=admin_username).first():
-        hashed = bcrypt.generate_password_hash(admin_pass).decode('utf-8')
-        key = generate_unique_key()
-        while User.query.filter_by(unique_key=key).first():
+    with app.app_context():
+        db.create_all()
+        admin_username = app.config.get('ADMIN_USERNAME', 'Henry')
+        admin_pass = app.config.get('ADMIN_PASS', 'Dec@2003')
+        if not User.query.filter_by(username=admin_username).first():
+            hashed = bcrypt.generate_password_hash(admin_pass).decode('utf-8')
             key = generate_unique_key()
-        admin = User(username=admin_username, password_hash=hashed, unique_key=key, is_admin=True, real_name='Admin')
-        db.session.add(admin)
-        db.session.commit()
+            while User.query.filter_by(unique_key=key).first():
+                key = generate_unique_key()
+            admin = User(username=admin_username, password_hash=hashed, unique_key=key, is_admin=True, real_name='Admin')
+            db.session.add(admin)
+            db.session.commit()
+
+initialize_db()
 
 def get_current_user():
     if 'user_id' in session:
@@ -970,7 +973,7 @@ def get_profile(user_id):
 def update_profile():
     user = get_current_user()
     if not user:
-        return jupytext({'error': 'Unauthorized'}), 401
+        return jsonify({'error': 'Unauthorized'}), 401
     data = request.form
     user.real_name = data.get('real_name', user.real_name)
     user.bio = data.get('bio', user.bio)
@@ -1100,7 +1103,7 @@ def admin_ban_user(user_id):
 def admin_warn_user(user_id):
     user = get_current_user()
     if not user or not user.is_admin:
-        return jupytext({'error': 'Unauthorized'}), 403
+        return jsonify({'error': 'Unauthorized'}), 403
     message = request.json.get('message')
     notif = Notification(user_id=user_id, type='warning', message=message)
     db.session.add(notif)
