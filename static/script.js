@@ -603,7 +603,9 @@ function sendChat() {
 }
 
 // Update the loadProfile function
+// Update the loadProfile function in script.js to use the new endpoints
 function loadProfile(userId) {
+    // First get user basic info
     fetch(`${apiBase}/user/${userId}`, { credentials: 'include' })
     .then(res => {
         if (res.status === 403) {
@@ -615,338 +617,230 @@ function loadProfile(userId) {
     .then(user => {
         if (!user) return;
         
+        // Then get stats
+        return fetch(`${apiBase}/user/stats/${userId}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(stats => {
+            return { user, stats };
+        });
+    })
+    .then(({ user, stats }) => {
         const content = document.getElementById('content');
         const isOwnProfile = userId == sessionStorage.getItem('user_id');
-        const isGroup = user.hasOwnProperty('creator_id'); // Check if it's a group
+        const isGroup = user.hasOwnProperty('creator_id');
         
         if (isGroup) {
             renderGroupProfile(user);
             return;
         }
         
-        // Count friends, followers, following (these would need backend endpoints)
-        const friendsCount = 0; // Would come from API
-        const followersCount = 0; // Would come from API
-        const followingCount = 0; // Would come from API
-        const postsCount = 0; // Would come from API
-        const likesCount = 0; // Would come from API
+        // Get mutual friends if not own profile
+        let mutualFriendsPromise = Promise.resolve([]);
+        if (!isOwnProfile) {
+            mutualFriendsPromise = fetch(`${apiBase}/user/mutual/${userId}`, { credentials: 'include' })
+                .then(res => res.json());
+        }
         
-        content.innerHTML = `
-            <div class="profile-header">
-                <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                    <div style="position: relative;">
-                        <img src="${user.profile_pic_url || '/static/default.jpg'}" class="profile-pic-large">
-                        ${isOwnProfile ? `
-                            <label for="profilePhotoUpload" class="camera-button">
-                                <i class="fa fa-camera"></i>
-                            </label>
-                            <input id="profilePhotoUpload" type="file" accept="image/*" style="display: none;" onchange="uploadProfilePhoto(this)">
-                        ` : ''}
-                    </div>
-                    <div style="margin-left: 15px;">
-                        <h2>${user.real_name || 'Anonymous'}</h2>
-                        <p><strong>Unique Key: ${user.unique_key || 'N/A'}</strong></p>
-                        <div class="profile-stats">
-                            <span>Friends: ${friendsCount}</span>
-                            <span>Followers: ${followersCount}</span>
-                            <span>Following: ${followingCount}</span>
-                            <span>Posts: ${postsCount}</span>
-                            <span>Likes: ${likesCount}</span>
-                        </div>
-                        <div class="profile-actions">
+        return mutualFriendsPromise.then(mutualFriends => {
+            content.innerHTML = `
+                <div class="profile-header">
+                    <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                        <div style="position: relative;">
+                            <img src="${user.profile_pic_url || '/static/default.jpg'}" class="profile-pic-large">
                             ${isOwnProfile ? `
-                                <button onclick="showModal('profileEditModal')">Edit Profile</button>
-                                <button onclick="shareProfile()">Share Profile</button>
-                            ` : `
-                                <button onclick="followUser(${userId})">Follow</button>
-                                <button onclick="messageUser(${userId})">Message</button>
-                            `}
+                                <label for="profilePhotoUpload" class="camera-button">
+                                    <i class="fa fa-camera"></i>
+                                </label>
+                                <input id="profilePhotoUpload" type="file" accept="image/*" style="display: none;" onchange="uploadProfilePhoto(this)">
+                            ` : ''}
+                        </div>
+                        <div style="margin-left: 15px;">
+                            <h2>${user.real_name || 'Anonymous'}</h2>
+                            <p><strong>Unique Key: ${user.unique_key || 'N/A'}</strong></p>
+                            <div class="profile-stats">
+                                <span>Friends: ${stats.friends || 0}</span>
+                                <span>Followers: ${stats.followers || 0}</span>
+                                <span>Following: ${stats.following || 0}</span>
+                                <span>Posts: ${stats.posts || 0}</span>
+                                <span>Likes: ${stats.likes || 0}</span>
+                            </div>
+                            <div class="profile-actions">
+                                ${isOwnProfile ? `
+                                    <button onclick="showModal('profileEditModal')">Edit Profile</button>
+                                    <button onclick="shareProfile()">Share Profile</button>
+                                ` : `
+                                    <button onclick="followUser(${userId})">Follow</button>
+                                    <button onclick="messageUser(${userId})">Message</button>
+                                `}
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
-                
-                ${!isOwnProfile ? `
-                    <div class="mutual-friends">
-                        <p>Mutual friends: User1, User2, User3</p>
+                    
+                    ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
+                    
+                    ${!isOwnProfile && mutualFriends.length > 0 ? `
+                        <div class="mutual-friends">
+                            <p>Mutual friends: ${mutualFriends.map(f => f.real_name).join(', ')}</p>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="profile-info">
+                        ${user.username ? `<p><strong>Username:</strong> ${user.username}</p>` : ''}
+                        ${user.dob ? `<p><strong>Date of Birth:</strong> ${user.dob}</p>` : ''}
+                        ${user.gender ? `<p><strong>Gender:</strong> ${user.gender}</p>` : ''}
+                        ${user.pronouns ? `<p><strong>Pronouns:</strong> ${user.pronouns}</p>` : ''}
+                        ${user.work ? `<p><strong>Work:</strong> ${user.work}</p>` : ''}
+                        ${user.education ? `<p><strong>Education:</strong> ${user.education}</p>` : ''}
+                        ${user.places ? `<p><strong>Places:</strong> ${user.places}</p>` : ''}
+                        ${user.relationship ? `<p><strong>Relationship:</strong> ${user.relationship}</p>` : ''}
+                        ${user.spouse ? `<p><strong>Spouse/Partner:</strong> ${user.spouse}</p>` : ''}
+                        ${user.email ? `<p><strong>Email:</strong> ${user.email}</p>` : ''}
+                        ${user.phone ? `<p><strong>Phone:</strong> ${user.phone}</p>` : ''}
                     </div>
-                ` : ''}
+                </div>
                 
-                <div class="profile-info">
-                    ${user.username ? `<p><strong>Username:</strong> ${user.username}</p>` : ''}
-                    ${user.dob ? `<p><strong>Date of Birth:</strong> ${user.dob}</p>` : ''}
-                    ${user.gender ? `<p><strong>Gender:</strong> ${user.gender}</p>` : ''}
-                    ${user.pronouns ? `<p><strong>Pronouns:</strong> ${user.pronouns}</p>` : ''}
-                    ${user.work ? `<p><strong>Work:</strong> ${user.work}</p>` : ''}
-                    ${user.education ? `<p><strong>Education:</strong> ${user.education}</p>` : ''}
-                    ${user.places ? `<p><strong>Places:</strong> ${user.places}</p>` : ''}
-                    ${user.relationship ? `<p><strong>Relationship:</strong> ${user.relationship}</p>` : ''}
-                    ${user.spouse ? `<p><strong>Spouse/Partner:</strong> ${user.spouse}</p>` : ''}
-                    ${user.email ? `<p><strong>Email:</strong> ${user.email}</p>` : ''}
-                    ${user.phone ? `<p><strong>Phone:</strong> ${user.phone}</p>` : ''}
+                <div class="profile-nav">
+                    <button onclick="loadUserPosts(${userId})"><i class="fa fa-image"></i> Posts</button>
+                    <button onclick="loadUserReels(${userId})"><i class="fa fa-video"></i> Reels</button>
+                    ${isOwnProfile ? `
+                        <button onclick="loadLockedPosts()"><i class="fa fa-lock"></i> Locked</button>
+                        <button onclick="loadSavedPosts()"><i class="fa fa-bookmark"></i> Saved</button>
+                        <button onclick="loadReposts()"><i class="fa fa-retweet"></i> Reposts</button>
+                        <button onclick="loadLikedContent()"><i class="fa fa-heart"></i> Liked</button>
+                    ` : ''}
                 </div>
-            </div>
-            
-            <div class="profile-nav">
-                <button onclick="loadUserPosts(${userId})"><i class="fa fa-image"></i> Posts</button>
-                <button onclick="loadUserReels(${userId})"><i class="fa fa-video"></i> Reels</button>
-                ${isOwnProfile ? `
-                    <button onclick="loadLockedPosts()"><i class="fa fa-lock"></i> Locked</button>
-                    <button onclick="loadSavedPosts()"><i class="fa fa-bookmark"></i> Saved</button>
-                    <button onclick="loadReposts()"><i class="fa fa-retweet"></i> Reposts</button>
-                    <button onclick="loadLikedContent()"><i class="fa fa-heart"></i> Liked</button>
-                ` : ''}
-            </div>
-            
-            <div id="profileContent"></div>
-        `;
-        
-        loadUserPosts(userId);  // Default
-        
-        if (isOwnProfile) {
-            fillProfileEdit(user);
-            // Populate day dropdown
-            const daySelect = document.getElementById('editDobDay');
-            for (let i = 1; i <= 31; i++) {
-                const option = document.createElement('option');
-                option.value = i;
-                option.textContent = i;
-                daySelect.appendChild(option);
-            }
-        }
-    });
-}
-
-// Add function to render group profile
-function renderGroupProfile(group) {
-    const content = document.getElementById('content');
-    const isAdmin = false; // Would need to check if current user is admin
-    
-    content.innerHTML = `
-        <div class="group-profile-header">
-            <img src="${group.profile_pic_url || '/static/default.jpg'}" class="group-pic-large">
-            <h2>${group.name}</h2>
-            <p>${group.members_count || 0} members</p>
-            
-            <div class="group-actions">
-                <button onclick="messageGroup(${group.id})">Message</button>
-                <button onclick="addToGroup(${group.id})">Add</button>
-            </div>
-            
-            <div class="group-link">
-                <p>Group Link: ${window.location.origin}/group/${group.link}</p>
-                <button onclick="copyGroupLink('${window.location.origin}/group/${group.link}')">Copy Link</button>
-            </div>
-            
-            <p class="group-description">${group.description || ''}</p>
-            
-            ${isAdmin ? `
-                <div class="group-permissions">
-                    <h3>Permissions</h3>
-                    <label><input type="checkbox" id="allowMessages" ${group.allow_messages_nonadmin ? 'checked' : ''}> Allow non-admins to send messages</label>
-                    <label><input type="checkbox" id="allowAddMembers" ${group.allow_add_nonadmin ? 'checked' : ''}> Allow non-admins to add members</label>
-                    <label><input type="checkbox" id="approveNewMembers" ${group.approve_new_members ? 'checked' : ''}> Approve new members</label>
-                    <button onclick="saveGroupPermissions(${group.id})">Save Permissions</button>
-                </div>
-            ` : ''}
-            
-            <div class="group-members">
-                <h3>Members</h3>
-                <div id="membersList"></div>
-                <button onclick="loadAllMembers(${group.id})">Show All</button>
-            </div>
-            
-            <div class="group-nav">
-                <button onclick="loadGroupMedia(${group.id})"><i class="fa fa-image"></i> Media</button>
-                <button onclick="loadGroupLinks(${group.id})"><i class="fa fa-link"></i> Links</button>
-                <button onclick="loadGroupDocs(${group.id})"><i class="fa fa-file"></i> Documents</button>
-            </div>
-            
-            <div class="exit-options">
-                <button onclick="exitGroup(${group.id})">Exit Group</button>
-                <button onclick="reportAndExit(${group.id})">Report & Exit</button>
-            </div>
-        </div>
-        
-        <div id="groupContent"></div>
-    `;
-    
-    loadGroupMedia(group.id);  // Default
-}
-
-// Add function to toggle spouse field based on relationship status
-function toggleSpouseField() {
-    const relationship = document.getElementById('editRelationship').value;
-    const spouseField = document.getElementById('editSpouse');
-    spouseField.style.display = (relationship === 'married' || relationship === 'engaged') ? 'block' : 'none';
-}
-
-// Add function to preview profile photo
-function previewProfilePhoto(input) {
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('profilePreview').src = e.target.result;
-        }
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-
-// Add function to upload profile photo
-function uploadProfilePhoto(input) {
-    if (input.files && input.files[0]) {
-        const formData = new FileReader();
-        formData.append('file', input.files[0]);
-        
-        fetch(`${apiBase}/upload`, { 
-            method: 'POST', 
-            body: formData, 
-            credentials: 'include' 
-        })
-        .then(res => res.json())
-        .then(data => {
-            // Update profile with new photo URL
-            fetch(`${apiBase}/user/update`, {
-                method: 'POST',
-                body: JSON.stringify({ profile_pic_url: data.url }),
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include'
-            }).then(() => {
-                loadProfile(sessionStorage.getItem('user_id'));
-            });
-        });
-    }
-}
-
-// Add function to share profile
-function shareProfile() {
-    const profileLink = `${window.location.origin}/profile/${sessionStorage.getItem('user_id')}`;
-    
-    // Show modal with options to share
-    showModal('shareProfileModal');
-    document.getElementById('shareProfileLink').value = profileLink;
-    
-    // Also load friends list to suggest sharing
-    fetch(`${apiBase}/friends/friends`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(friends => {
-        const friendsList = document.getElementById('shareFriendsList');
-        friendsList.innerHTML = '';
-        
-        friends.forEach(friend => {
-            const item = document.createElement('div');
-            item.innerHTML = `
-                <input type="checkbox" id="friend-${friend.id}" value="${friend.id}">
-                <label for="friend-${friend.id}">${friend.real_name} (@${friend.username})</label>
+                
+                <div id="profileContent"></div>
             `;
-            friendsList.appendChild(item);
+            
+            loadUserPosts(userId);  // Default
+            
+            if (isOwnProfile) {
+                fillProfileEdit(user);
+                // Populate day dropdown
+                const daySelect = document.getElementById('editDobDay');
+                for (let i = 1; i <= 31; i++) {
+                    const option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = i;
+                    daySelect.appendChild(option);
+                }
+            }
         });
     });
 }
 
-// Add function to copy group link
-function copyGroupLink(link) {
-    navigator.clipboard.writeText(link).then(() => {
-        alert('Link copied to clipboard');
+// Update the content loading functions
+function loadUserPosts(userId) {
+    fetch(`${apiBase}/user/posts/${userId}`, { credentials: 'include' })
+    .then(res => {
+        if (res.status === 403) {
+            document.getElementById('profileContent').innerHTML = '<p>This content is private</p>';
+            return;
+        }
+        return res.json();
+    })
+    .then(posts => {
+        if (!posts) return;
+        renderProfileContent(posts, 'Posts');
     });
 }
 
-// Update the fillProfileEdit function
-function fillProfileEdit(user) {
-    document.getElementById('editRealName').value = user.real_name || '';
-    document.getElementById('editUsername').value = user.username || '';
-    document.getElementById('editBio').value = user.bio || '';
-    
-    // Set basic info
-    if (user.dob) {
-        const dobParts = user.dob.split('-');
-        if (dobParts.length === 3) {
-            document.getElementById('editDobDay').value = parseInt(dobParts[2]);
-            document.getElementById('editDobMonth').value = parseInt(dobParts[1]);
-            document.getElementById('editDobYear').value = parseInt(dobParts[0]);
+function loadUserReels(userId) {
+    fetch(`${apiBase}/user/reels/${userId}`, { credentials: 'include' })
+    .then(res => {
+        if (res.status === 403) {
+            document.getElementById('profileContent').innerHTML = '<p>This content is private</p>';
+            return;
         }
-    }
-    
-    document.getElementById('editGender').value = user.gender || '';
-    document.getElementById('editPronouns').value = user.pronouns || '';
-    
-    // Set work & education
-    document.getElementById('editWork').value = user.work || '';
-    document.getElementById('editUniversity').value = user.education || ''; // Using university field for education
-    // Note: You might need to adjust this based on your database structure
-    
-    // Set location
-    document.getElementById('editLocation').value = user.places || '';
-    
-    // Set contact info
-    document.getElementById('editPhone').value = user.phone || '';
-    document.getElementById('editEmail').value = user.email || '';
-    // Social link and website would need to be added to the user model
-    
-    // Set relationship
-    document.getElementById('editRelationship').value = user.relationship || '';
-    document.getElementById('editSpouse').value = user.spouse || '';
-    toggleSpouseField();
-    
-    // Set profile preview
-    if (user.profile_pic_url) {
-        document.getElementById('profilePreview').src = user.profile_pic_url;
-    }
+        return res.json();
+    })
+    .then(reels => {
+        if (!reels) return;
+        renderProfileContent(reels, 'Reels');
+    });
 }
 
-// Update the updateProfile function
-function updateProfile() {
-    // Get all form values
-    const day = document.getElementById('editDobDay').value;
-    const month = document.getElementById('editDobMonth').value;
-    const year = document.getElementById('editDobYear').value;
-    const dob = year && month && day ? `${year}-${month}-${day}` : '';
+function loadLockedPosts() {
+    const userId = sessionStorage.getItem('user_id');
+    fetch(`${apiBase}/user/locked/${userId}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(posts => {
+        renderProfileContent(posts, 'Locked Posts');
+    });
+}
+
+function loadSavedPosts() {
+    const userId = sessionStorage.getItem('user_id');
+    fetch(`${apiBase}/user/saved/${userId}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(posts => {
+        renderProfileContent(posts, 'Saved Posts');
+    });
+}
+
+function loadReposts() {
+    const userId = sessionStorage.getItem('user_id');
+    fetch(`${apiBase}/user/reposts/${userId}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(posts => {
+        renderProfileContent(posts, 'Reposts');
+    });
+}
+
+function loadLikedContent() {
+    const userId = sessionStorage.getItem('user_id');
+    fetch(`${apiBase}/user/liked/${userId}`, { credentials: 'include' })
+    .then(res => res.json())
+    .then(posts => {
+        renderProfileContent(posts, 'Liked Content');
+    });
+}
+
+function renderProfileContent(items, title) {
+    const content = document.getElementById('profileContent');
+    content.innerHTML = `<h3>${title}</h3>`;
     
-    const data = {
-        real_name: document.getElementById('editRealName').value,
-        username: document.getElementById('editUsername').value,
-        bio: document.getElementById('editBio').value,
-        dob: dob,
-        gender: document.getElementById('editGender').value,
-        pronouns: document.getElementById('editPronouns').value,
-        work: document.getElementById('editWork').value,
-        education: document.getElementById('editUniversity').value, // Using university for education
-        places: document.getElementById('editLocation').value,
-        phone: document.getElementById('editPhone').value,
-        email: document.getElementById('editEmail').value,
-        relationship: document.getElementById('editRelationship').value,
-        spouse: document.getElementById('editSpouse').value,
-        // Add social_link and website if you add those fields to the user model
-    };
+    if (items.length === 0) {
+        content.innerHTML += '<p>No content found</p>';
+        return;
+    }
     
-    fetch(`${apiBase}/user/update`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('profileEditModal');
-            loadProfile(sessionStorage.getItem('user_id'));
+    const gallery = document.createElement('div');
+    gallery.classList.add('posts-gallery');
+    
+    items.forEach(item => {
+        const itemDiv = document.createElement('div');
+        if (item.media_url) {
+            if (item.media_url.endsWith('.mp4')) {
+                itemDiv.innerHTML = `
+                    <video src="${item.media_url}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                `;
+            } else {
+                itemDiv.innerHTML = `
+                    <img src="${item.media_url}" style="width: 100%; height: 100%; object-fit: cover;">
+                `;
+            }
         } else {
-            res.json().then(data => alert(data.error));
+            itemDiv.innerHTML = `
+                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f0f2f5;">
+                    <p>${item.description || 'No media'}</p>
+                </div>
+            `;
         }
+        itemDiv.style.aspectRatio = '1';
+        itemDiv.style.cursor = 'pointer';
+        itemDiv.onclick = () => viewPost(item.id);
+        gallery.appendChild(itemDiv);
     });
+    
+    content.appendChild(gallery);
 }
 
-function changePassword() {
-    const old_password = document.getElementById('oldPassword').value;
-    const new_password = document.getElementById('newPasswordChange').value;
-    fetch(`${apiBase}/user/change_password`, {
-        method: 'POST',
-        body: JSON.stringify({ old_password, new_password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) alert('Changed');
-        else res.json().then(data => alert(data.error));
-    });
+// Add function to view post
+function viewPost(postId) {
+    // Implement post viewing logic
+    alert('View post ' + postId);
 }
 
 function loadUserPosts(userId) {
