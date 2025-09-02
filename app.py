@@ -286,6 +286,7 @@ def get_posts():
         is_liked = bool(Like.query.filter_by(post_id=p.id, user_id=user.id).first())
         comments_count = Comment.query.filter_by(post_id=p.id).count()
         is_following = bool(Follow.query.filter_by(follower_id=user.id, followed_id=p.user_id, status='accepted').first())
+        is_saved = bool(Save.query.filter_by(post_id=p.id, user_id=user.id).first())
         posts_data.append({
             'id': p.id,
             'user': {'id': post_user.id, 'username': post_user.username, 'real_name': post_user.real_name, 'profile_pic': post_user.profile_pic_url},
@@ -297,7 +298,8 @@ def get_posts():
             'comments': comments_count,
             'views': p.views,
             'is_own': is_own,
-            'is_following': is_following
+            'is_following': is_following,
+            'is_saved': is_saved
         })
     return jsonify({'posts': posts_data, 'has_next': posts.has_next})
 
@@ -318,6 +320,7 @@ def get_reels():
         is_liked = bool(Like.query.filter_by(post_id=r.id, user_id=user.id).first())
         comments_count = Comment.query.filter_by(post_id=r.id).count()
         is_following = bool(Follow.query.filter_by(follower_id=user.id, followed_id=r.user_id, status='accepted').first())
+        is_saved = bool(Save.query.filter_by(post_id=r.id, user_id=user.id).first())
         reels_data.append({
             'id': r.id,
             'user': {'id': reel_user.id, 'username': reel_user.username, 'real_name': reel_user.real_name, 'profile_pic': reel_user.profile_pic_url},
@@ -329,7 +332,8 @@ def get_reels():
             'comments': comments_count,
             'views': r.views,
             'is_own': is_own,
-            'is_following': is_following
+            'is_following': is_following,
+            'is_saved': is_saved
         })
     return jsonify({'reels': reels_data, 'has_next': reels.has_next})
 
