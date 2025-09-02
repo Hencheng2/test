@@ -59,18 +59,18 @@ class Follow(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     follower_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     followed_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    status = db.Column(db.String(20), default='pending')  # pending, accepted
+    status = db.Column(db.String(20), default='pending')
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    type = db.Column(db.String(20), nullable=False)  # post, reel, story
+    type = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text)
     media_url = db.Column(db.String(200))
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
     views = db.Column(db.Integer, default=0)
-    visibility = db.Column(db.String(20), default='public')  # public, friends
+    visibility = db.Column(db.String(20), default='public')
 
 class Like(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -145,12 +145,11 @@ class Notification(db.Model):
 class Report(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    reported_type = db.Column(db.String(20), nullable=False)  # user, post, group
+    reported_type = db.Column(db.String(20), nullable=False)
     reported_id = db.Column(db.Integer, nullable=False)
     description = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-# Initialize database and admin user at startup
 def initialize_db():
     with app.app_context():
         db.create_all()
@@ -264,10 +263,8 @@ def home():
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
-    # Get mutual friends IDs
     following_sub = db.session.query(Follow.followed_id).filter_by(follower_id=user.id, status='accepted').subquery()
     friends_ids = [row[0] for row in db.session.query(Follow.follower_id).filter(and_(Follow.followed_id == user.id, Follow.status == 'accepted', Follow.follower_id.in_(following_sub)))]
-    # Stories from friends
     stories = Post.query.filter_by(type='story').filter(Post.user_id.in_(friends_ids)).order_by(Post.timestamp.desc()).all()
     stories_data = [{'id': s.id, 'user': s.user.username, 'media_url': s.media_url, 'description': s.description} for s in stories]
     return jsonify({'stories': stories_data})
@@ -341,7 +338,6 @@ def get_stories():
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
-    # Same as home stories
     following_sub = db.session.query(Follow.followed_id).filter_by(follower_id=user.id, status='accepted').subquery()
     friends_ids = [row[0] for row in db.session.query(Follow.follower_id).filter(and_(Follow.followed_id == user.id, Follow.status == 'accepted', Follow.follower_id.in_(following_sub)))]
     stories = Post.query.filter_by(type='story').filter(Post.user_id.in_(friends_ids)).order_by(Post.timestamp.desc()).all()
@@ -354,7 +350,6 @@ def view_story(story_id):
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     story = Post.query.get_or_404(story_id)
-    # Check if from friend
     if story.user_id not in get_friends_ids(user.id):
         return jsonify({'error': 'Not authorized'}), 403
     story.views += 1
@@ -388,7 +383,6 @@ def create_content():
     post = Post(user_id=user.id, type=content_type, description=description, media_url=media_url, visibility=visibility)
     db.session.add(post)
     db.session.commit()
-    # Notify followers if post/reel
     if content_type in ['post', 'reel']:
         followers = Follow.query.filter_by(followed_id=user.id, status='accepted').all()
         for f in followers:
@@ -472,7 +466,7 @@ def report(reported_id):
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
-    reported_type = request.json.get('type')  # post, user, group
+    reported_type = request.json.get('type')
     description = request.json.get('description')
     report = Report(reporter_id=user.id, reported_type=reported_type, reported_id=reported_id, description=description)
     db.session.add(report)
@@ -481,7 +475,6 @@ def report(reported_id):
 
 @app.route('/api/hide/<int:post_id>', methods=['POST'])
 def hide_post(post_id):
-    # For simplicity, assume client-side hide, or add a Hide model if needed
     return jsonify({'message': 'Hidden'})
 
 @app.route('/api/block/user/<int:user_id>', methods=['POST'])
@@ -491,10 +484,8 @@ def block_user(user_id):
         return jsonify({'error': 'Unauthorized'}), 401
     if user_id == user.id:
         return jsonify({'error': 'Cannot block self'}), 400
-    # Remove follows
     Follow.query.filter_by(follower_id=user.id, followed_id=user_id).delete()
     Follow.query.filter_by(follower_id=user_id, followed_id=user.id).delete()
-    # Add to blocked list? For now, assume blocking means no follow/interaction
     db.session.commit()
     return jsonify({'message': 'Blocked'})
 
@@ -588,7 +579,7 @@ def follow(user_id):
         if existing.status == 'accepted':
             return jsonify({'error': 'Already following'}), 400
         else:
-            existing.status = 'pending'  # Re-request
+            existing.status = 'pending'
     else:
         follow = Follow(follower_id=user.id, followed_id=user_id, status='pending')
         db.session.add(follow)
@@ -639,7 +630,6 @@ def get_chats():
     user = get_current_user()
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
-    # Get distinct chats
     chats_query = db.session.query(
         func.case(when=(PrivateMessage.sender_id == user.id, PrivateMessage.receiver_id), else_=PrivateMessage.sender_id).label('other_id'),
         func.max(PrivateMessage.timestamp).label('last_time')
@@ -669,7 +659,6 @@ def get_group_chats():
     for gm in groups:
         group = Group.query.get(gm.group_id)
         last_msg = GroupMessage.query.filter_by(group_id=gm.group_id).order_by(GroupMessage.timestamp.desc()).first()
-        # Unread: simplistic, assume all read for now, or add read per user if needed
         unread = 0
         data.append({
             'group_id': group.id,
@@ -702,10 +691,8 @@ def private_messages(other_id):
         db.session.add(notif)
         db.session.commit()
         return jsonify({'message': 'Sent'})
-    # GET
     messages = PrivateMessage.query.filter(or_(and_(PrivateMessage.sender_id == user.id, PrivateMessage.receiver_id == other_id), and_(PrivateMessage.sender_id == other_id, PrivateMessage.receiver_id == user.id))).order_by(PrivateMessage.timestamp.asc()).all()
     data = [{'id': m.id, 'sender_id': m.sender_id, 'text': m.text, 'media_url': m.media_url, 'timestamp': m.timestamp.isoformat()} for m in messages]
-    # Mark read
     PrivateMessage.query.filter_by(receiver_id=user.id, sender_id=other_id, is_read=False).update({'is_read': True})
     db.session.commit()
     return jsonify({'messages': data})
@@ -735,7 +722,6 @@ def group_messages(group_id):
                 media_url = '/static/uploads/' + filename
         msg = GroupMessage(group_id=group_id, sender_id=user.id, text=text, media_url=media_url)
         db.session.add(msg)
-        # Notify members? For efficiency, client poll
         db.session.commit()
         return jsonify({'message': 'Sent'})
     messages = GroupMessage.query.filter_by(group_id=group_id).order_by(GroupMessage.timestamp.asc()).all()
@@ -749,9 +735,9 @@ def create_group():
         return jsonify({'error': 'Unauthorized'}), 401
     name = request.form.get('name')
     description = request.form.get('description')
-    allow_nonadmin_messages = request.form.get('allow_nonadmin_messages', True) == 'true'
-    allow_nonadmin_add_members = request.form.get('allow_nonadmin_add_members', True) == 'true'
-    approve_new_members = request.form.get('approve_new_members', False) == 'true'
+    allow_nonadmin_messages = request.form.get('allow_nonadmin_messages', 'true') == 'true'
+    allow_nonadmin_add_members = request.form.get('allow_nonadmin_add_members', 'true') == 'true'
+    approve_new_members = request.form.get('approve_new_members', 'false') == 'true'
     profile_pic_url = None
     if 'file' in request.files:
         file = request.files['file']
@@ -780,13 +766,12 @@ def get_group(group_id):
     if is_member:
         is_admin = GroupMember.query.filter_by(group_id=group_id, user_id=user.id).first().is_admin
     members = [m.user_id for m in GroupMember.query.filter_by(group_id=group_id).all()]
-    members_data = [{'id': m, 'name': User.query.get(m).real_name} for m in members[:10]]  # First 10
+    members_data = [{'id': m, 'name': User.query.get(m).real_name} for m in members[:10]]
     permissions = {
         'allow_nonadmin_messages': group.allow_nonadmin_messages,
         'allow_nonadmin_add_members': group.allow_nonadmin_add_members,
         'approve_new_members': group.approve_new_members
     }
-    # Media, links, docs: simplistic, get from messages
     media = [m.media_url for m in GroupMessage.query.filter_by(group_id=group_id).filter(GroupMessage.media_url != None).all()]
     data = {
         'id': group.id,
@@ -798,8 +783,7 @@ def get_group(group_id):
         'is_member': is_member,
         'is_admin': is_admin,
         'permissions': permissions if is_admin or group.creator_id == user.id else None,
-        'media': media,
-        # Add links/docs if parsed from text
+        'media': media
     }
     return jsonify(data)
 
@@ -811,9 +795,6 @@ def join_group(group_id):
     group = Group.query.get_or_404(group_id)
     if GroupMember.query.filter_by(group_id=group_id, user_id=user.id).first():
         return jsonify({'error': 'Already member'}), 400
-    if group.approve_new_members:
-        # Send request to admins, but for simple, assume auto
-        pass
     member = GroupMember(group_id=group_id, user_id=user.id, is_admin=False)
     db.session.add(member)
     notif = Notification(user_id=group.creator_id, type='group_join', content_id=group_id, message=f'{user.username} joined {group.name}')
@@ -829,14 +810,11 @@ def leave_group(group_id):
     gm = GroupMember.query.filter_by(group_id=group_id, user_id=user.id).first()
     if not gm:
         return jsonify({'error': 'Not member'}), 400
-    if group.creator_id == user.id:
-        # Pass admin to random
+    if Group.query.get(group_id).creator_id == user.id:
         other_admins = GroupMember.query.filter_by(group_id=group_id, is_admin=True).filter(GroupMember.user_id != user.id).first()
         if other_admins:
-            # Pass to one
             pass
         else:
-            # Delete group or pass to random member
             other_member = GroupMember.query.filter_by(group_id=group_id).filter(GroupMember.user_id != user.id).first()
             if other_member:
                 other_member.is_admin = True
@@ -953,11 +931,11 @@ def get_profile(user_id):
             'website': profile_user.website,
             'relationship': profile_user.relationship,
             'spouse': profile_user.spouse
-        }.items() if v}  # Show only added
+        }.items() if v}
     }
     if is_own:
         data['posts'] = [p.id for p in Post.query.filter_by(user_id=user_id, type='post').all()]
-        data['locked_posts'] = []  # Assume all public for simple
+        data['locked_posts'] = []
         data['saved'] = [s.post_id for s in Save.query.filter_by(user_id=user_id).all()]
         data['reposts'] = [r.original_post_id for r in Repost.query.filter_by(user_id=user_id).all()]
         data['liked'] = [l.post_id for l in Like.query.filter_by(user_id=user_id).all()]
@@ -1051,8 +1029,6 @@ def update_settings():
     if not user:
         return jsonify({'error': 'Unauthorized'}), 401
     data = request.json
-    # Language, theme, etc. For simple, assume client-side
-    # Profile locking, visibility, etc. Add fields if needed
     return jsonify({'message': 'Settings updated'})
 
 @app.route('/api/admin/users', methods=['GET'])
@@ -1072,7 +1048,6 @@ def admin_delete_user(user_id):
     target = User.query.get_or_404(user_id)
     if target.is_admin:
         return jsonify({'error': 'Cannot delete admin'}), 400
-    # Delete related
     Post.query.filter_by(user_id=user_id).delete()
     Follow.query.filter(or_(Follow.follower_id == user_id, Follow.followed_id == user_id)).delete()
     PrivateMessage.query.filter(or_(PrivateMessage.sender_id == user_id, PrivateMessage.receiver_id == user_id)).delete()
