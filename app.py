@@ -525,7 +525,7 @@ def api_group_profile(group_id):
     is_member = bool(member)
     is_admin = member.is_admin if member else False
     members = GroupMember.query.filter_by(group_id=group_id).limit(10).all()
-    media = Message.query.filter_by(group_id=group_id, media_url != None).all()  # simplify
+    media = Message.query.filter_by(group_id=group_id).filter(Message.media_url != None).all()
     return render_template('group_profile_modal.html', group=group, is_admin=is_admin, members=members, media=media)
 
 @app.route('/api/edit_profile', methods=['POST'])
