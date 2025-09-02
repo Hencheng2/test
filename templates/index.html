@@ -1,4 +1,4 @@
-<!-- templates/index.html (Full HTML Code) -->
+<!-- templates/index.html (Updated) -->
 
 <!DOCTYPE html>
 <html lang="en">
@@ -6,11 +6,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SociaFam</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css" onerror="console.error('Failed to load CSS')">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 </head>
 <body>
-    <div id="content"></div>
+    <div id="content"><p>Loading...</p></div>
     <div class="nav-bar">
         <button id="homeBtn" class="nav-button"><i class="fa fa-home"></i></button>
         <button id="reelsBtn" class="nav-button"><i class="fa fa-video"></i></button>
@@ -79,7 +79,7 @@
                 <option value="reel">Reel</option>
                 <option value="story">Story</option>
             </select>
-            <input type="file" id="addMedia">
+            <input type="file" id="addMedia" accept="image/*,video/*,audio/*">
             <textarea id="addDescription" placeholder="Description"></textarea>
             <button onclick="createPost()">Post</button>
         </div>
@@ -89,7 +89,6 @@
     <div id="profileModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('profileModal')">&times;</span>
-            <!-- Dynamic profile content -->
             <div id="profileContent"></div>
         </div>
     </div>
@@ -98,7 +97,6 @@
     <div id="chatModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="hideModal('chatModal')">&times;</span>
-            <!-- Dynamic chat content -->
             <div id="chatContent"></div>
             <input id="chatInput" placeholder="Type message">
             <button onclick="sendChat()">Send</button>
@@ -107,13 +105,9 @@
 
     <!-- Story Modal -->
     <div id="storyModal" class="modal" style="background-color: black;">
-        <div class="story-view" id="storyView">
-            <!-- Dynamic story content -->
-        </div>
+        <div class="story-view" id="storyView"></div>
     </div>
 
-    <!-- Other modals like edit profile, group profile, etc. loaded dynamically -->
-
-    <script src="/static/script.js"></script>
+    <script src="/static/script.js" onerror="console.error('Failed to load JS')"></script>
 </body>
 </html>
