@@ -220,6 +220,21 @@
     </div>
 </div>
 
+
+    <!-- Add this modal for sharing profile -->
+<div id="shareProfileModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="hideModal('shareProfileModal')">&times;</span>
+        <h3>Share Profile</h3>
+        <input id="shareProfileLink" type="text" readonly>
+        <button onclick="copyProfileLink()">Copy Link</button>
+        
+        <h4>Share with friends</h4>
+        <div id="shareFriendsList"></div>
+        <button onclick="shareWithSelectedFriends()">Send</button>
+    </div>
+</div>
+
     <!-- Change Password Modal -->
     <div id="changePasswordModal" class="modal">
         <div class="modal-content">
