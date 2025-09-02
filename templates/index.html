@@ -22,7 +22,7 @@
     </nav>
 
     <div class="container">
-        <div id="home" class="section">
+        <div id="home" class="section active">
             <div class="stories" id="home-stories"></div>
             <div id="home-posts"></div>
         </div>
@@ -116,7 +116,6 @@
         </div>
     </div>
 
-    <!-- Modals -->
     <div id="login-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
@@ -172,6 +171,7 @@
                     <option value="public">Public</option>
                     <option value="friends">Friends</option>
                 </select>
+                <input type="hidden" name="type" value="post">
                 <button type="submit">Post</button>
             </form>
         </div>
@@ -187,6 +187,7 @@
                     <option value="public">Public</option>
                     <option value="friends">Friends</option>
                 </select>
+                <input type="hidden" name="type" value="reel">
                 <button type="submit">Share Reel</button>
             </form>
         </div>
@@ -198,6 +199,7 @@
             <form id="create-story-form" enctype="multipart/form-data">
                 <textarea placeholder="Story description" name="description"></textarea>
                 <input type="file" name="file" accept="image/*,video/*">
+                <input type="hidden" name="type" value="story">
                 <button type="submit">Share Story</button>
             </form>
         </div>
@@ -214,6 +216,17 @@
                 <label><input type="checkbox" name="allow_nonadmin_add_members" checked> Allow non-admin to add members</label>
                 <label><input type="checkbox" name="approve_new_members"> Approve new members</label>
                 <button type="submit">Create Group</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="comment-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <form id="comment-form">
+                <input type="text" id="comment-text" placeholder="Add a comment..." required>
+                <input type="hidden" id="comment-post-id">
+                <button type="submit">Comment</button>
             </form>
         </div>
     </div>
