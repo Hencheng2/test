@@ -1288,6 +1288,525 @@ def search():
     users = users_real + users_username
     return jsonify({'users': users})
 
+# Add these endpoints to app.py
+
+@app.route('/api/user/stats/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_stats(user_id):
+    current_user_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Get counts
+    cursor.execute("SELECT COUNT(*) as count FROM follows WHERE followed_id = ? AND status = 'accepted'", (user_id,))
+    followers_count = cursor.fetchone()['count']
+    
+    cursor.execute("SELECT COUNT(*) as count FROM follows WHERE follower_id = ? AND status = 'accepted'", (user_id,))
+    following_count = cursor.fetchone()['count']
+    
+    cursor.execute("""
+        SELECT COUNT(*) as count 
+        FROM follows f1 
+        JOIN follows f2 ON f1.followed_id = f2.follower_id 
+        WHERE f1.follower_id = ? AND f2.followed_id = ? AND f1.status = 'accepted' AND f2.status = 'accepted'
+    """, (user_id, user_id))
+    friends_count = cursor.fetchone()['count']
+    
+    cursor.execute("SELECT COUNT(*) as count FROM posts WHERE user_id = ? AND type = 'post'", (user_id,))
+    posts_count = cursor.fetchone()['count']
+    
+    cursor.execute("""
+        SELECT COUNT(*) as count 
+        FROM likes l 
+        JOIN posts p ON l.post_id = p.id 
+        WHERE p.user_id = ?
+    """, (user_id,))
+    likes_count = cursor.fetchone()['count']
+    
+    return jsonify({
+        'followers': followers_count,
+        'following': following_count,
+        'friends': friends_count,
+        'posts': posts_count,
+        'likes': likes_count
+    })
+
+@app.route('/api/user/mutual/<int:user_id>', methods=['GET'])
+@login_required
+def get_mutual_friends(user_id):
+    current_user_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Get mutual friends (limit to 3)
+    cursor.execute("""
+        SELECT u.id, u.username, u.real_name, u.profile_pic_url
+        FROM follows f1 
+        JOIN follows f2 ON f1.followed_id = f2.follower_id 
+        JOIN users u ON f1.followed_id = u.id
+        WHERE f1.follower_id = ? AND f2.followed_id = ? 
+        AND f1.status = 'accepted' AND f2.status = 'accepted'
+        AND u.id != ? AND u.id != ?
+        LIMIT 3
+    """, (current_user_id, user_id, current_user_id, user_id))
+    
+    mutual_friends = [dict(row) for row in cursor.fetchall()]
+    return jsonify(mutual_friends)
+
+@app.route('/api/user/posts/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_posts(user_id):
+    current_user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Check if user can view posts based on privacy
+    cursor.execute("SELECT posts_privacy, profile_locked FROM users WHERE id = ?", (user_id,))
+    user_settings = cursor.fetchone()
+    
+    if not user_settings:
+        return jsonify({'error': 'User not found'}), 404
+    
+    privacy = user_settings['posts_privacy']
+    profile_locked = user_settings['profile_locked']
+    
+    # Privacy check
+    if privacy == 'only_me' and user_id != current_user_id:
+        return jsonify({'error': 'Private posts'}), 403
+    
+    if privacy == 'friends' and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Friends only'}), 403
+    
+    if profile_locked and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Private profile'}), 403
+    
+    # Get posts
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
+        FROM posts p 
+        JOIN users u ON p.user_id = u.id 
+        WHERE p.user_id = ? AND p.type = 'post'
+        ORDER BY p.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    posts = [dict(row) for row in cursor.fetchall()]
+    return jsonify(posts)
+
+@app.route('/api/user/reels/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_reels(user_id):
+    current_user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Check if user can view reels based on privacy
+    cursor.execute("SELECT reels_privacy, profile_locked FROM users WHERE id = ?", (user_id,))
+    user_settings = cursor.fetchone()
+    
+    if not user_settings:
+        return jsonify({'error': 'User not found'}), 404
+    
+    privacy = user_settings['reels_privacy']
+    profile_locked = user_settings['profile_locked']
+    
+    # Privacy check
+    if privacy == 'only_me' and user_id != current_user_id:
+        return jsonify({'error': 'Private reels'}), 403
+    
+    if privacy == 'friends' and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Friends only'}), 403
+    
+    if profile_locked and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Private profile'}), 403
+    
+    # Get reels
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
+        FROM posts p 
+        JOIN users u ON p.user_id = u.id 
+        WHERE p.user_id = ? AND p.type = 'reel'
+        ORDER BY p.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    reels = [dict(row) for row in cursor.fetchall()]
+    return jsonify(reels)
+
+@app.route('/api/user/locked/<int:user_id>', methods=['GET'])
+@login_required
+def get_locked_posts(user_id):
+    # Only the user themselves can access locked posts
+    if session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Get locked posts (posts with privacy = 'only_me')
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
+        FROM posts p 
+        JOIN users u ON p.user_id = u.id 
+        WHERE p.user_id = ? AND p.privacy = 'only_me'
+        ORDER BY p.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    posts = [dict(row) for row in cursor.fetchall()]
+    return jsonify(posts)
+
+@app.route('/api/user/saved/<int:user_id>', methods=['GET'])
+@login_required
+def get_saved_posts(user_id):
+    # Only the user themselves can access saved posts
+    if session['user_id'] != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Get saved posts
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url 
+        FROM saves s 
+        JOIN posts p ON s.post_id = p.id 
+        JOIN users u ON p.user_id = u.id 
+        WHERE s.user_id = ?
+        ORDER BY s.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    posts = [dict(row) for row in cursor.fetchall()]
+    return jsonify(posts)
+
+@app.route('/api/user/reposts/<int:user_id>', methods=['GET'])
+@login_required
+def get_reposts(user_id):
+    current_user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Check if user can view reposts based on privacy
+    cursor.execute("SELECT profile_locked FROM users WHERE id = ?", (user_id,))
+    user_settings = cursor.fetchone()
+    
+    if not user_settings:
+        return jsonify({'error': 'User not found'}), 404
+    
+    profile_locked = user_settings['profile_locked']
+    
+    # Privacy check
+    if profile_locked and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Private profile'}), 403
+    
+    # Get reposts
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url, r.timestamp as repost_time
+        FROM reposts r 
+        JOIN posts p ON r.post_id = p.id 
+        JOIN users u ON p.user_id = u.id 
+        WHERE r.user_id = ?
+        ORDER BY r.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    reposts = [dict(row) for row in cursor.fetchall()]
+    return jsonify(reposts)
+
+@app.route('/api/user/liked/<int:user_id>', methods=['GET'])
+@login_required
+def get_liked_content(user_id):
+    current_user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if blocked
+    cursor.execute("SELECT * FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)", 
+                  (current_user_id, user_id, user_id, current_user_id))
+    if cursor.fetchone():
+        return jsonify({'error': 'Blocked'}), 403
+    
+    # Check if user can view liked content based on privacy
+    cursor.execute("SELECT profile_locked FROM users WHERE id = ?", (user_id,))
+    user_settings = cursor.fetchone()
+    
+    if not user_settings:
+        return jsonify({'error': 'User not found'}), 404
+    
+    profile_locked = user_settings['profile_locked']
+    
+    # Privacy check
+    if profile_locked and user_id != current_user_id and not is_friend(current_user_id, user_id):
+        return jsonify({'error': 'Private profile'}), 403
+    
+    # Get liked content
+    cursor.execute("""
+        SELECT p.*, u.username, u.real_name, u.profile_pic_url, l.timestamp as like_time
+        FROM likes l 
+        JOIN posts p ON l.post_id = p.id 
+        JOIN users u ON p.user_id = u.id 
+        WHERE l.user_id = ?
+        ORDER BY l.timestamp DESC LIMIT ? OFFSET ?
+    """, (user_id, limit, offset))
+    
+    liked = [dict(row) for row in cursor.fetchall()]
+    return jsonify(liked)
+
+@app.route('/api/group/<string:link>', methods=['GET'])
+@login_required
+def get_group_by_link(link):
+    user_id = session['user_id']
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute("SELECT * FROM groups WHERE link = ?", (link,))
+    group = cursor.fetchone()
+    if not group:
+        return jsonify({'error': 'Group not found'}), 404
+    
+    group = dict(group)
+    
+    # Check if user is member
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group['id'], user_id))
+    if not cursor.fetchone() and not session.get('is_admin'):
+        return jsonify({'error': 'Not a member'}), 403
+    
+    # Get member count
+    cursor.execute("SELECT COUNT(*) as count FROM group_members WHERE group_id = ? AND status = 'accepted'", (group['id'],))
+    group['members_count'] = cursor.fetchone()['count']
+    
+    # Get permissions
+    cursor.execute("SELECT * FROM group_permissions WHERE group_id = ?", (group['id'],))
+    permissions = cursor.fetchone()
+    if permissions:
+        group.update(dict(permissions))
+    
+    return jsonify(group)
+
+@app.route('/api/group/members/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_members(group_id):
+    user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 10
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if user is member
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
+    if not cursor.fetchone() and not session.get('is_admin'):
+        return jsonify({'error': 'Not a member'}), 403
+    
+    # Get members
+    cursor.execute("""
+        SELECT u.id, u.username, u.real_name, u.profile_pic_url, gm.is_admin, gm.joined_at
+        FROM group_members gm 
+        JOIN users u ON gm.user_id = u.id 
+        WHERE gm.group_id = ? AND gm.status = 'accepted'
+        ORDER BY gm.is_admin DESC, gm.joined_at DESC 
+        LIMIT ? OFFSET ?
+    """, (group_id, limit, offset))
+    
+    members = [dict(row) for row in cursor.fetchall()]
+    return jsonify(members)
+
+@app.route('/api/group/media/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_media(group_id):
+    user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if user is member
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
+    if not cursor.fetchone() and not session.get('is_admin'):
+        return jsonify({'error': 'Not a member'}), 403
+    
+    # Get media (messages with media)
+    cursor.execute("""
+        SELECT m.*, u.username, u.real_name, u.profile_pic_url
+        FROM messages m 
+        JOIN users u ON m.sender_id = u.id 
+        WHERE m.receiver_id = ? AND m.is_group = 1 AND m.media_url IS NOT NULL
+        ORDER BY m.timestamp DESC LIMIT ? OFFSET ?
+    """, (group_id, limit, offset))
+    
+    media = [dict(row) for row in cursor.fetchall()]
+    return jsonify(media)
+
+@app.route('/api/group/links/<int:group_id>', methods=['GET'])
+@login_required
+def get_group_links(group_id):
+    user_id = session['user_id']
+    page = int(request.args.get('page', 1))
+    limit = 20
+    offset = (page - 1) * limit
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Check if user is member
+    cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (group_id, user_id))
+    if not cursor.fetchone() and not session.get('is_admin'):
+        return jsonify({'error': 'Not a member'}), 403
+    
+    # Get links (messages that contain URLs)
+    cursor.execute("""
+        SELECT m.*, u.username, u.real_name, u.profile_pic_url
+        FROM messages m 
+        JOIN users u ON m.sender_id = u.id 
+        WHERE m.receiver_id = ? AND m.is_group = 1 
+        AND (m.text LIKE '%http://%' OR m.text LIKE '%https://%')
+        ORDER BY m.timestamp DESC LIMIT ? OFFSET ?
+    """, (group_id, limit, offset))
+    
+    links = [dict(row) for row in cursor.fetchall()]
+    return jsonify(links)
+
+@app.route('/api/profile/share', methods=['POST'])
+@login_required
+def share_profile():
+    data = request.json
+    target_ids = data.get('target_ids', [])  # List of user IDs to share with
+    message = data.get('message', '')
+    user_id = session['user_id']
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Get current user's profile info
+    cursor.execute("SELECT username, real_name FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    profile_link = f"{request.host_url}profile/{user_id}"
+    share_message = f"{message}\n\nCheck out my profile: {profile_link}"
+    
+    # Send message to each target user
+    for target_id in target_ids:
+        # Check if not blocked
+        if not is_blocked(user_id, target_id) and not is_blocked(target_id, user_id):
+            cursor.execute("INSERT INTO messages (sender_id, receiver_id, text) VALUES (?, ?, ?)", 
+                          (user_id, target_id, share_message))
+            notify(target_id, 'message', from_user_id=user_id, text=f"{user['real_name']} shared their profile with you")
+    
+    db.commit()
+    return jsonify({'message': 'Profile shared'})
+
+# Update the user update endpoint to handle all the new fields
+@app.route('/api/user/update', methods=['POST'])
+@login_required
+def update_user():
+    user_id = session['user_id']
+    data = request.json
+    
+    # Map the frontend field names to database field names
+    field_mapping = {
+        'real_name': 'real_name',
+        'username': 'username',
+        'bio': 'bio',
+        'dob': 'dob',
+        'gender': 'gender',
+        'pronouns': 'pronouns',
+        'work': 'work',
+        'education': 'education',
+        'places': 'places',
+        'phone': 'phone',
+        'email': 'email',
+        'relationship': 'relationship',
+        'spouse': 'spouse',
+        'posts_privacy': 'posts_privacy',
+        'reels_privacy': 'reels_privacy',
+        'stories_privacy': 'stories_privacy',
+        'theme': 'theme',
+        'notifications_settings': 'notifications_settings',
+        'profile_locked': 'profile_locked'
+    }
+    
+    update_fields = []
+    values = []
+    
+    for frontend_field, db_field in field_mapping.items():
+        if frontend_field in data:
+            update_fields.append(f"{db_field} = ?")
+            values.append(data[frontend_field])
+    
+    if update_fields:
+        values.append(user_id)
+        set_clause = ', '.join(update_fields)
+        
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Check if username is already taken (if username is being updated)
+        if 'username' in data and data['username']:
+            cursor.execute("SELECT id FROM users WHERE username = ? AND id != ?", (data['username'], user_id))
+            if cursor.fetchone():
+                return jsonify({'error': 'Username already taken'}), 400
+        
+        cursor.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+        db.commit()
+    
+    return jsonify({'message': 'Updated'})
+
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
 def admin_get_users():
