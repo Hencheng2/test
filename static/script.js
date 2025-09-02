@@ -1,26 +1,44 @@
 document.addEventListener('DOMContentLoaded', () => {
     checkLoginStatus();
     setupEventListeners();
-    loadHome(); // Load home section by default
 });
 
 function checkLoginStatus() {
     fetch('/api/profile')
         .then(response => {
             if (response.ok) {
-                document.querySelectorAll('.section').forEach(section => section.style.display = 'none');
+                // User is logged in, show homepage
+                document.querySelectorAll('.section').forEach(section => {
+                    section.classList.remove('active');
+                    section.style.display = 'none';
+                });
                 document.getElementById('home').classList.add('active');
                 document.getElementById('home').style.display = 'block';
-                document.getElementById('login-modal').style.display = 'none';
+                document.querySelectorAll('.modal').forEach(modal => modal.style.display = 'none');
+                loadHome();
                 fetch('/api/profile').then(res => res.json()).then(data => {
                     if (data.is_admin) {
                         document.getElementById('admin-btn').style.display = 'block';
                     }
                 });
             } else {
-                document.querySelectorAll('.section').forEach(section => section.style.display = 'none');
+                // User is not logged in, show login modal and hide all sections
+                document.querySelectorAll('.section').forEach(section => {
+                    section.classList.remove('active');
+                    section.style.display = 'none';
+                });
+                document.querySelectorAll('.modal').forEach(modal => modal.style.display = 'none');
                 document.getElementById('login-modal').style.display = 'block';
             }
+        })
+        .catch(() => {
+            // Handle network errors, show login modal
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+                section.style.display = 'none';
+            });
+            document.querySelectorAll('.modal').forEach(modal => modal.style.display = 'none');
+            document.getElementById('login-modal').style.display = 'block';
         });
 }
 
@@ -39,16 +57,66 @@ function setupEventListeners() {
     document.querySelectorAll('.close').forEach(closeBtn => {
         closeBtn.addEventListener('click', () => closeBtn.closest('.modal').style.display = 'none');
     });
-    document.getElementById('home-btn').addEventListener('click', loadHome);
-    document.getElementById('reels-btn').addEventListener('click', loadReels);
-    document.getElementById('friends-btn').addEventListener('click', () => loadFriendsTab('friends'));
-    document.getElementById('inbox-btn').addEventListener('click', () => loadInboxTab('chats'));
-    document.getElementById('profile-btn').addEventListener('click', () => loadProfileTab('posts'));
-    document.getElementById('search-btn').addEventListener('click', () => loadSearchTab('all'));
-    document.getElementById('addto-btn').addEventListener('click', () => showSection('addto'));
-    document.getElementById('notifications-btn').addEventListener('click', loadNotifications);
-    document.getElementById('menu-btn').addEventListener('click', () => showSection('menu'));
-    document.getElementById('admin-btn').addEventListener('click', () => loadAdminTab('users'));
+    document.getElementById('home-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadHome();
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('reels-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadReels();
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('friends-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadFriendsTab('friends');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('inbox-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadInboxTab('chats');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('profile-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadProfileTab('posts');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('search-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadSearchTab('all');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('addto-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) showSection('addto');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('notifications-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadNotifications();
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('menu-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) showSection('menu');
+            else showModal('login-modal');
+        });
+    });
+    document.getElementById('admin-btn').addEventListener('click', () => {
+        fetch('/api/profile').then(response => {
+            if (response.ok) loadAdminTab('users');
+            else showModal('login-modal');
+        });
+    });
 }
 
 function showSection(sectionId) {
@@ -104,7 +172,8 @@ function register(e) {
             if (data.message) {
                 alert(`Registration successful! Your unique key is ${data.unique_key}. Save it for password recovery.`);
                 document.getElementById('register-modal').style.display = 'none';
-                showModal('login-modal');
+                showSection('home');
+                loadHome();
             } else {
                 alert(data.error);
             }
@@ -169,12 +238,16 @@ function loadHome() {
                 storiesContainer.appendChild(storyEl);
             });
             loadPosts();
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadPosts(page = 1) {
     fetch(`/api/posts?page=${page}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const postsContainer = document.getElementById('home-posts');
             if (page === 1) postsContainer.innerHTML = '';
@@ -210,13 +283,17 @@ function loadPosts(page = 1) {
                 loadMore.onclick = () => loadPosts(page + 1);
                 postsContainer.appendChild(loadMore);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadReels(page = 1) {
     showSection('reels');
     fetch(`/api/reels?page=${page}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const reelsContainer = document.getElementById('reels');
             if (page === 1) reelsContainer.innerHTML = '';
@@ -250,12 +327,16 @@ function loadReels(page = 1) {
                 loadMore.onclick = () => loadReels(page + 1);
                 reelsContainer.appendChild(loadMore);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function viewStory(storyId) {
     fetch(`/api/story/${storyId}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const modal = document.createElement('div');
             modal.className = 'modal';
@@ -271,7 +352,8 @@ function viewStory(storyId) {
             `;
             document.body.appendChild(modal);
             modal.style.display = 'block';
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function createContent(e) {
@@ -282,7 +364,10 @@ function createContent(e) {
         method: 'POST',
         body: formData
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 form.closest('.modal').style.display = 'none';
@@ -293,22 +378,33 @@ function createContent(e) {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function likePost(postId, button) {
     fetch(`/api/like/${postId}`, { method: 'POST' })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             button.textContent = data.message === 'liked' ? `Unlike` : `Like`;
             const likes = parseInt(button.textContent.match(/\((\d+)\)/)[1]) + (data.message === 'liked' ? 1 : -1);
             button.textContent = `${data.message === 'liked' ? 'Unlike' : 'Like'} (${likes})`;
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function showCommentModal(postId) {
-    document.getElementById('comment-post-id').value = postId;
-    showModal('comment-modal');
+    fetch('/api/profile').then(response => {
+        if (response.ok) {
+            document.getElementById('comment-post-id').value = postId;
+            showModal('comment-modal');
+        } else {
+            showModal('login-modal');
+        }
+    });
 }
 
 function commentPost(e) {
@@ -320,7 +416,10 @@ function commentPost(e) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 document.getElementById('comment-modal').style.display = 'none';
@@ -330,21 +429,30 @@ function commentPost(e) {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function repost(postId) {
     fetch(`/api/repost/${postId}`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => alert(data.message));
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
+        .then(data => alert(data.message))
+        .catch(() => showModal('login-modal'));
 }
 
 function savePost(postId, button) {
     fetch(`/api/save/${postId}`, { method: 'POST' })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             button.textContent = data.message === 'saved' ? 'Unsave' : 'Save';
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function report(reportedId, type) {
@@ -355,33 +463,52 @@ function report(reportedId, type) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type, description })
         })
-            .then(response => response.json())
-            .then(data => alert(data.message));
+            .then(response => {
+                if (!response.ok) throw new Error('Not logged in');
+                return response.json();
+            })
+            .then(data => alert(data.message))
+            .catch(() => showModal('login-modal'));
     }
 }
 
 function hidePost(postId) {
     fetch(`/api/hide/${postId}`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => alert(data.message));
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
+        .then(data => alert(data.message))
+        .catch(() => showModal('login-modal'));
 }
 
 function follow(userId) {
     fetch(`/api/follow/${userId}`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => alert(data.message));
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
+        .then(data => alert(data.message))
+        .catch(() => showModal('login-modal'));
 }
 
 function unfollow(userId) {
     fetch(`/api/unfollow/${userId}`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => alert(data.message));
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
+        .then(data => alert(data.message))
+        .catch(() => showModal('login-modal'));
 }
 
 function loadFriendsTab(tab) {
     showSection('friends');
     fetch(`/api/friends/${tab}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const list = document.getElementById('friends-list');
             list.innerHTML = '';
@@ -407,31 +534,43 @@ function loadFriendsTab(tab) {
                 `;
                 list.appendChild(li);
             });
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function acceptRequest(userId) {
     fetch(`/api/accept_request/${userId}`, { method: 'POST' })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             alert(data.message);
             loadFriendsTab('requests');
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function declineRequest(userId) {
     fetch(`/api/decline_request/${userId}`, { method: 'POST' })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             alert(data.message);
             loadFriendsTab('requests');
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadInboxTab(tab) {
     showSection('inbox');
     fetch(`/api/inbox/${tab}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const list = document.getElementById('inbox-list');
             list.innerHTML = '';
@@ -455,12 +594,16 @@ function loadInboxTab(tab) {
                 });
                 list.appendChild(li);
             });
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadChat(otherId) {
     fetch(`/api/messages/private/${otherId}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             document.getElementById('chat-name').textContent = data.messages[0]?.sender_id === otherId ? data.messages[0].sender_name : data.messages[0]?.receiver_name;
             document.getElementById('chat-profile-pic').src = data.messages[0]?.sender_id === otherId ? data.messages[0].sender_profile_pic : data.messages[0]?.receiver_profile_pic || '/static/default.jpg';
@@ -481,7 +624,8 @@ function loadChat(otherId) {
             messages.scrollTop = messages.scrollHeight;
             showModal('chat-modal');
             document.getElementById('chat-input-text').dataset.otherId = otherId;
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function sendMessage() {
@@ -495,7 +639,10 @@ function sendMessage() {
         method: 'POST',
         body: formData
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 document.getElementById('chat-input-text').value = '';
@@ -504,17 +651,24 @@ function sendMessage() {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadGroupChat(groupId) {
     fetch(`/api/group/${groupId}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(group => {
             document.getElementById('group-name').textContent = group.name;
             document.getElementById('group-profile-pic').src = group.profile_pic || '/static/default.jpg';
             fetch(`/api/messages/group/${groupId}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error('Not logged in');
+                    return response.json();
+                })
                 .then(data => {
                     const messages = document.getElementById('group-chat-messages');
                     messages.innerHTML = '';
@@ -533,8 +687,10 @@ function loadGroupChat(groupId) {
                     messages.scrollTop = messages.scrollHeight;
                     showModal('group-chat-modal');
                     document.getElementById('group-chat-input-text').dataset.groupId = groupId;
-                });
-        });
+                })
+                .catch(() => showModal('login-modal'));
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function sendGroupMessage() {
@@ -548,7 +704,10 @@ function sendGroupMessage() {
         method: 'POST',
         body: formData
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 document.getElementById('group-chat-input-text').value = '';
@@ -557,7 +716,8 @@ function sendGroupMessage() {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function createGroup(e) {
@@ -568,7 +728,10 @@ function createGroup(e) {
         method: 'POST',
         body: formData
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 form.closest('.modal').style.display = 'none';
@@ -577,13 +740,17 @@ function createGroup(e) {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadProfileTab(tab) {
     showSection('profile');
     fetch('/api/profile')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             document.getElementById('profile-pic-img').src = data.profile_pic || '/static/default.jpg';
             document.getElementById('profile-name').textContent = data.real_name;
@@ -650,7 +817,8 @@ function loadProfileTab(tab) {
             }
             document.querySelectorAll('.profile-navbar button').forEach(btn => btn.classList.remove('active'));
             document.querySelector(`.profile-navbar button[onclick="loadProfileTab('${tab}')"]`).classList.add('active');
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function updateProfile(e) {
@@ -661,7 +829,10 @@ function updateProfile(e) {
         method: 'POST',
         body: formData
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             if (data.message) {
                 alert(data.message);
@@ -669,14 +840,18 @@ function updateProfile(e) {
             } else {
                 alert(data.error);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function search() {
     const query = document.getElementById('search-bar').value;
     const tab = document.querySelector('.tabs button.active')?.textContent.toLowerCase() || 'all';
     fetch(`/api/search?query=${encodeURIComponent(query)}&tab=${tab}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const results = document.getElementById('search-results');
             results.innerHTML = '';
@@ -694,7 +869,8 @@ function search() {
                 });
                 results.appendChild(section);
             }
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadSearchTab(tab) {
@@ -707,7 +883,10 @@ function loadSearchTab(tab) {
 function loadNotifications() {
     showSection('notifications');
     fetch('/api/notifications')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const list = document.getElementById('notifications-list');
             list.innerHTML = '';
@@ -720,16 +899,21 @@ function loadNotifications() {
                 `;
                 list.appendChild(li);
             });
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function markRead(notifId) {
     fetch(`/api/notification/mark_read/${notifId}`, { method: 'POST' })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             alert(data.message);
             loadNotifications();
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function updateSettings(e) {
@@ -742,17 +926,24 @@ function updateSettings(e) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             alert(data.message);
             form.closest('.modal').style.display = 'none';
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function loadAdminTab(tab) {
     showSection('admin');
     fetch(`/api/admin/${tab}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
         .then(data => {
             const content = document.getElementById('admin-content');
             content.innerHTML = '';
@@ -779,14 +970,95 @@ function loadAdminTab(tab) {
             }
             document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
             document.querySelector(`.tabs button[onclick="loadAdminTab('${tab}')"]`).classList.add('active');
-        });
+        })
+        .catch(() => showModal('login-modal'));
 }
 
 function adminDeleteUser(userId) {
     if (confirm('Delete user?')) {
         fetch(`/api/admin/delete/user/${userId}`, { method: 'POST' })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) throw new Error('Not logged in');
+                return response.json();
+            })
             .then(data => {
                 alert(data.message);
                 loadAdminTab('users');
+            })
+            .catch(() => showModal('login-modal'));
+    }
+}
+
+function adminBanUser(userId) {
+    if (confirm('Ban/Unban user?')) {
+        fetch(`/api/admin/ban/user/${userId}`, { method: 'POST' })
+            .then(response => {
+                if (!response.ok) throw new Error('Not logged in');
+                return response.json();
+            })
+            .then(data => {
+                alert(data.message);
+                loadAdminTab('users');
+            })
+            .catch(() => showModal('login-modal'));
+    }
+}
+
+function adminWarnUser(userId) {
+    const message = prompt('Warning message:');
+    if (message) {
+        fetch(`/api/admin/warn/user/${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        })
+            .then(response => {
+                if (!response.ok) throw new Error('Not logged in');
+                return response.json();
+            })
+            .then(data => {
+                alert(data.message);
+            })
+            .catch(() => showModal('login-modal'));
+    }
+}
+
+function adminDeleteContent(contentId, type) {
+    if (confirm('Delete content?')) {
+        const endpoint = type === 'group' ? `/api/admin/delete/group/${contentId}` : `/api/admin/delete/content/${contentId}`;
+        fetch(endpoint, { method: 'POST' })
+            .then(response => {
+                if (!response.ok) throw new Error('Not logged in');
+                return response.json();
+            })
+            .then(data => {
+                alert(data.message);
+                loadAdminTab('reports');
+            })
+            .catch(() => showModal('login-modal'));
+    }
+}
+
+function logout() {
+    fetch('/api/logout', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            document.getElementById('admin-btn').style.display = 'none';
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+                section.style.display = 'none';
             });
+            showModal('login-modal');
+        });
+}
+
+function getCurrentUserId() {
+    return fetch('/api/profile')
+        .then(response => {
+            if (!response.ok) throw new Error('Not logged in');
+            return response.json();
+        })
+        .then(data => data.id)
+        .catch(() => null);
+}
