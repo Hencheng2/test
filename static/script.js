@@ -4,7 +4,7 @@ const apiBase = '/api';
 
 function showModal(id) {
     const modal = document.getElementById(id);
-    if (modal) modal.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
 }
 
 function hideModal(id) {
@@ -17,6 +17,13 @@ let loading = false;
 let currentView = 'home';
 let currentStoryIndex = 0;
 let stories = [];
+let currentStoryUser = null;
+let currentStoryMedia = null;
+let storyTimeout = null;
+let storyHoldTimeout = null;
+
+const contentDiv = document.getElementById('content');
+const observer = new IntersectionObserver(handleIntersection, { threshold: 0 });
 
 document.addEventListener('DOMContentLoaded', () => {
     checkLoggedIn();
@@ -30,1184 +37,661 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('notifBtn')?.addEventListener('click', () => loadView('notifications'));
     document.getElementById('menuBtn')?.addEventListener('click', () => loadView('menu'));
     document.getElementById('adminBtn')?.addEventListener('click', () => loadView('admin'));
-    window.addEventListener('scroll', handleInfiniteScroll);
-    document.getElementById('searchInput')?.addEventListener('input', loadSearchResults);
-    document.getElementById('friendsSearch')?.addEventListener('input', loadFriendsSearch);
-    // Add event listeners for forms
-    document.getElementById('loginForm')?.addEventListener('submit', (e) => { e.preventDefault(); login(); });
-    document.getElementById('registerForm')?.addEventListener('submit', (e) => { e.preventDefault(); register(); });
-    document.getElementById('forgotForm')?.addEventListener('submit', (e) => { e.preventDefault(); forgot(); });
-    document.getElementById('resetForm')?.addEventListener('submit', (e) => { e.preventDefault(); resetPassword(); });
-    document.getElementById('addForm')?.addEventListener('submit', (e) => { e.preventDefault(); createPost(); });
+
+    document.getElementById('showPostTab')?.addEventListener('click', () => switchAddTab('post'));
+    document.getElementById('showReelTab')?.addEventListener('click', () => switchAddTab('reel'));
+    document.getElementById('showStoryTab')?.addEventListener('click', () => switchAddTab('story'));
+
+    document.getElementById('postForm')?.addEventListener('submit', (e) => { e.preventDefault(); createPost(); });
+    document.getElementById('reelForm')?.addEventListener('submit', (e) => { e.preventDefault(); createReel(); });
+    document.getElementById('storyForm')?.addEventListener('submit', (e) => { e.preventDefault(); createStory(); });
+
+    document.getElementById('loginForm')?.addEventListener('submit', (e) => { e.preventDefault(); handleLogin(); });
+    document.getElementById('registerForm')?.addEventListener('submit', (e) => { e.preventDefault(); handleRegister(); });
+    document.getElementById('showRegister')?.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('loginFormContainer').style.display = 'none'; document.getElementById('registerFormContainer').style.display = 'block'; });
+    document.getElementById('showLogin')?.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('registerFormContainer').style.display = 'none'; document.getElementById('loginFormContainer').style.display = 'block'; });
+
     document.getElementById('profileEditForm')?.addEventListener('submit', (e) => { e.preventDefault(); updateProfile(); });
-    document.getElementById('changePasswordForm')?.addEventListener('submit', (e) => { e.preventDefault(); changePassword(); });
+
     document.getElementById('groupCreateForm')?.addEventListener('submit', (e) => { e.preventDefault(); createGroup(); });
-    document.getElementById('groupEditForm')?.addEventListener('submit', (e) => { e.preventDefault(); editGroup(); });
-    document.getElementById('chatForm')?.addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
-    document.getElementById('commentForm')?.addEventListener('submit', (e) => { e.preventDefault(); addComment(); });
-    document.getElementById('reportForm')?.addEventListener('submit', (e) => { e.preventDefault(); report(); });
+
+    document.getElementById('reportForm')?.addEventListener('submit', (e) => { e.preventDefault(); reportContent(); });
 });
 
+function switchAddTab(tab) {
+    document.querySelectorAll('.content-tab').forEach(el => el.style.display = 'none');
+    document.getElementById(`${tab}Tab`).style.display = 'block';
+}
+
 function checkLoggedIn() {
-    fetch(`${apiBase}/user/me`, { credentials: 'include' })
-    .then(res => {
-        if (res.status === 401) {
-            showModal('loginModal');
-        } else {
-            res.json().then(user => {
-                sessionStorage.setItem('user_id', user.id);
-                sessionStorage.setItem('is_admin', user.is_admin);
-                if (user.is_admin) document.getElementById('adminBtn').style.display = 'block';
-                applyTheme(user.theme);
-                loadView('home');
-            });
-        }
-    })
-    .catch(() => showModal('loginModal'));
+    fetch(`${apiBase}/auth/check_login`, { credentials: 'include' })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                return { is_logged_in: false, is_admin: false };
+            }
+        })
+        .then(data => {
+            if (data.is_logged_in) {
+                sessionStorage.setItem('user_id', data.user_id);
+                if (data.is_admin) {
+                    document.getElementById('adminBtn').style.display = 'block';
+                }
+                loadView(currentView);
+            } else {
+                showModal('authModal');
+            }
+        })
+        .catch(() => showModal('authModal'));
 }
 
-function applyTheme(theme) {
-    document.body.classList.toggle('dark', theme === 'dark');
-}
-
-function loadView(view, param = null) {
+async function loadView(view, targetId = null) {
     currentView = view;
-    currentPage = 1;
-    const content = document.getElementById('content');
-    content.innerHTML = '';
-    if (view === 'home') loadHome();
-    else if (view === 'reels') loadReels();
-    else if (view === 'friends') loadFriends();
-    else if (view === 'inbox') loadInbox();
-    else if (view === 'profile') loadProfile(param || sessionStorage.getItem('user_id'));
-    else if (view === 'search') loadSearch();
-    else if (view === 'notifications') loadNotifications();
-    else if (view === 'menu') loadMenu();
-    else if (view === 'admin') loadAdmin();
-}
+    let html = '';
+    contentDiv.innerHTML = '<div class="center">Loading...</div>';
+    
+    document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`${view}Btn`)?.classList.add('active');
 
-function handleInfiniteScroll() {
-    if (loading || (window.innerHeight + window.scrollY < document.body.offsetHeight - 100)) return;
-    loading = true;
-    currentPage++;
-    if (currentView === 'home') loadMorePosts();
-    else if (currentView === 'reels') loadMoreReels();
-    // Add for other views if needed
-}
-
-function loadMorePosts() {
-    fetch(`${apiBase}/posts/feed?page=${currentPage}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        if (data.length > 0) renderPosts(data, true);
-        loading = false;
-    });
-}
-
-function loadMoreReels() {
-    fetch(`${apiBase}/reels?page=${currentPage}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        if (data.length > 0) renderReels(data, true);
-        loading = false;
-    });
-}
-
-function loadHome() {
-    const content = document.getElementById('content');
-    fetch(`${apiBase}/stories`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        stories = data;
-        const storiesDiv = document.createElement('div');
-        storiesDiv.classList.add('stories');
-        stories.forEach((story, index) => {
-            const circle = document.createElement('div');
-            circle.classList.add('story-circle');
-            circle.style.backgroundImage = `url(${story.profile_pic_url || '/static/default.jpg'})`;
-            circle.onclick = () => showStory(index);
-            const username = document.createElement('p');
-            username.textContent = story.username;
-            circle.appendChild(username);
-            storiesDiv.appendChild(circle);
-        });
-        content.appendChild(storiesDiv);
-    });
-    fetch(`${apiBase}/posts/feed?page=1`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderPosts(data));
-}
-
-function renderPosts(posts, append = false) {
-    const content = document.getElementById('content');
-    if (!append) content.innerHTML = '';
-    posts.forEach(post => {
-        const postDiv = document.createElement('div');
-        postDiv.classList.add('post');
-        postDiv.innerHTML = `
-            <img src="${post.profile_pic_url || '/static/default.jpg'}" class="small-circle">
-            <span>${post.real_name || 'Anonymous'} (@${post.username}) - ${new Date(post.timestamp).toLocaleString()}</span>
-            <p>${post.description || ''}</p>
-            ${post.media_url ? `<img src="${post.media_url}" alt="post media">` : ''}
-            <div class="button-group">
-                <button onclick="likePost(${post.id})">Like</button>
-                <button onclick="showCommentModal(${post.id})">Comment</button>
-                <button onclick="sharePost(${post.id})">Share</button>
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="followUser(${post.user_id})">Follow</button>` : ''}
-                <button onclick="savePost(${post.id})">Save</button>
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="repostPost(${post.id})">Repost</button>` : ''}
-                <button>Views: ${post.views}</button>
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="reportPost(${post.id})">Report</button>` : ''}
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="hidePost(${post.id})">Hide</button>` : ''}
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="toggleNotifications(${post.user_id})">Turn on notifications</button>` : ''}
-                ${post.user_id != sessionStorage.getItem('user_id') ? `<button onclick="blockUser(${post.user_id})">Block</button>` : ''}
-            </div>
-        `;
-        content.appendChild(postDiv);
-    });
-}
-
-function loadReels() {
-    const content = document.getElementById('content');
-    content.innerHTML = '';
-    fetch(`${apiBase}/reels?page=1`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderReels(data));
-}
-
-function renderReels(reels, append = false) {
-    const content = document.getElementById('content');
-    if (!append) content.innerHTML = '';
-    reels.forEach(reel => {
-        const reelDiv = document.createElement('div');
-        reelDiv.classList.add('reel');
-        reelDiv.innerHTML = `
-            <video src="${reel.media_url}" class="reel-video" loop autoplay></video>
-            <div class="reel-overlay">
-                <span>${reel.real_name || 'Anonymous'} (@${reel.username})</span>
-                <p>${reel.description || ''}</p>
-                <div class="reel-buttons">
-                    <button onclick="likePost(${reel.id})">Like</button>
-                    <button onclick="showCommentModal(${reel.id})">Comment</button>
-                    <button onclick="sharePost(${reel.id})">Share</button>
-                    ${reel.user_id != sessionStorage.getItem('user_id') ? `<button onclick="followUser(${reel.user_id})">Follow</button>` : ''}
-                    <button onclick="savePost(${reel.id})">Save</button>
-                    ${reel.user_id != sessionStorage.getItem('user_id') ? `<button onclick="repostPost(${reel.id})">Repost</button>` : ''}
-                    <button onclick="downloadReel('${reel.media_url}')">Download</button>
-                </div>
-            </div>
-        `;
-        reelDiv.addEventListener('click', togglePlayPause);
-        content.appendChild(reelDiv);
-    });
-}
-
-function togglePlayPause(e) {
-    const video = e.currentTarget.querySelector('video');
-    if (video.paused) video.play();
-    else video.pause();
-}
-
-function downloadReel(url) {
-    // Placeholder for download with watermark
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'reel.mp4';
-    a.click();
-    // For watermark, would need canvas or server-side
-}
-
-function showStory(index) {
-    currentStoryIndex = index;
-    const modal = document.getElementById('storyModal');
-    updateStoryView();
-    showModal('storyModal');
-    let touchStartX = 0, touchEndX = 0, touchStartY = 0, touchEndY = 0;
-    let holdTimer;
-    modal.addEventListener('touchstart', e => {
-        touchStartX = e.changedTouches[0].screenX;
-        touchStartY = e.changedTouches[0].screenY;
-        holdTimer = setTimeout(() => pauseStory(), 500);
-    });
-    modal.addEventListener('touchend', e => {
-        clearTimeout(holdTimer);
-        touchEndX = e.changedTouches[0].screenX;
-        touchEndY = e.changedTouches[0].screenY;
-        if (touchEndX < touchStartX - 50) nextStory();
-        else if (touchEndX > touchStartX + 50) prevStory();
-        if (touchEndY > touchStartY + 50) hideModal('storyModal');
-        resumeStory();
-    });
-}
-
-function updateStoryView() {
-    const storyView = document.getElementById('storyView');
-    const story = stories[currentStoryIndex];
-    storyView.innerHTML = story.media_url.endsWith('.mp4') ? `<video src="${story.media_url}" autoplay loop></video>` : `<img src="${story.media_url}">`;
-    storyView.querySelector('video, img').style.width = '100%';
-    storyView.querySelector('video, img').style.height = '100vh';
-    storyView.querySelector('video, img').style.objectFit = 'contain';
-}
-
-function nextStory() {
-    if (currentStoryIndex < stories.length - 1) {
-        currentStoryIndex++;
-        updateStoryView();
-    }
-}
-
-function prevStory() {
-    if (currentStoryIndex > 0) {
-        currentStoryIndex--;
-        updateStoryView();
-    }
-}
-
-function pauseStory() {
-    const video = document.getElementById('storyView').querySelector('video');
-    if (video) video.pause();
-}
-
-function resumeStory() {
-    const video = document.getElementById('storyView').querySelector('video');
-    if (video) video.play();
-}
-
-function loadFriends() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <input id="friendsSearch" type="text" placeholder="Search users">
-        <div id="friendsNav">
-            <button onclick="loadFollowers()">Followers</button>
-            <button onclick="loadFollowing()">Following</button>
-            <button onclick="loadFriendsList()">Friends</button>
-            <button onclick="loadRequests()">Requests</button>
-            <button onclick="loadSuggested()">Suggested</button>
-        </div>
-        <div id="friendsList"></div>
-    `;
-    loadFollowers();  // Default
-}
-
-function loadFollowers() {
-    fetch(`${apiBase}/friends/followers`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderFriendsList(data, 'followers'));
-}
-
-function loadFollowing() {
-    fetch(`${apiBase}/friends/following`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderFriendsList(data, 'following'));
-}
-
-function loadFriendsList() {
-    fetch(`${apiBase}/friends/friends`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderFriendsList(data, 'friends'));
-}
-
-function loadRequests() {
-    fetch(`${apiBase}/friends/requests`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderFriendsList(data, 'requests'));
-}
-
-function loadSuggested() {
-    fetch(`${apiBase}/friends/suggested`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderFriendsList(data, 'suggested'));
-}
-
-function renderFriendsList(users, type) {
-    const list = document.getElementById('friendsList');
-    list.innerHTML = '';
-    users.forEach(user => {
-        const item = document.createElement('div');
-        item.classList.add('friends-item');
-        item.innerHTML = `
-            <img src="${user.profile_pic_url || '/static/default.jpg'}" class="small-circle">
-            <span>${user.real_name || 'Anonymous'} (@${user.username})<br><small>${user.mutual} mutual</small></span>
-        `;
-        const buttons = document.createElement('div');
-        if (type === 'followers') {
-            buttons.innerHTML = `
-                <button onclick="messageUser(${user.id})"><i class="fa fa-message"></i></button>
-                <button onclick="blockUser(${user.id})">Block</button>
-            `;
-        } else if (type === 'following' || type === 'friends') {
-            buttons.innerHTML = `
-                <button onclick="messageUser(${user.id})"><i class="fa fa-message"></i></button>
-                <button onclick="showDropdown(${user.id}, '${type}')"><i class="fa fa-ellipsis-v"></i></button>
-            `;
-        } else if (type === 'requests') {
-            buttons.innerHTML = `
-                <button onclick="acceptRequest(${user.id})">Accept</button>
-                <button onclick="declineRequest(${user.id})">Decline</button>
-                <button onclick="blockUser(${user.id})">Block</button>
-            `;
-        } else if (type === 'suggested') {
-            buttons.innerHTML = `
-                <button onclick="followUser(${user.id})">Follow</button>
-                <button onclick="removeSuggested(${user.id})">Remove</button>
-                <button onclick="blockUser(${user.id})">Block</button>
-            `;
+    try {
+        switch (view) {
+            case 'home':
+                await loadStories();
+                await loadPosts();
+                break;
+            case 'reels':
+                await loadReels();
+                break;
+            case 'friends':
+                await loadFriendsView();
+                break;
+            case 'inbox':
+                await loadInbox();
+                break;
+            case 'profile':
+                await loadProfile(targetId);
+                break;
+            case 'search':
+                html = `
+                    <div class="search-container">
+                        <input type="text" id="searchInput" placeholder="Search users or posts...">
+                        <button id="searchExecuteBtn">Search</button>
+                    </div>
+                    <div id="searchResults"></div>
+                `;
+                contentDiv.innerHTML = html;
+                document.getElementById('searchExecuteBtn')?.addEventListener('click', () => executeSearch());
+                break;
+            case 'notifications':
+                await loadNotifications();
+                break;
+            case 'admin':
+                await loadAdminDashboard();
+                break;
+            case 'menu':
+                await loadMenu();
+                break;
         }
-        item.appendChild(buttons);
-        item.onclick = () => loadProfile(user.id);
-        list.appendChild(item);
-    });
-}
-
-function loadFriendsSearch() {
-    const query = document.getElementById('friendsSearch').value;
-    if (query) {
-        fetch(`${apiBase}/search?query=${query}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => renderFriendsList(data.users, 'search'));
+    } catch (error) {
+        console.error('Error loading view:', error);
+        contentDiv.innerHTML = `<div class="center">Error loading content. Please try again later.</div>`;
     }
 }
 
-function acceptRequest(id) {
-    fetch(`${apiBase}/follow/accept`, {
-        method: 'POST',
-        body: JSON.stringify({ from_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => loadRequests());
-}
+// --- Dynamic View Loading Functions ---
 
-function declineRequest(id) {
-    fetch(`${apiBase}/follow/decline`, {
-        method: 'POST',
-        body: JSON.stringify({ from_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => loadRequests());
-}
-
-function removeSuggested(id) {
-    // Client-side remove for now
-    alert('Removed from suggested');
-}
-
-function showDropdown(id, type) {
-    // Placeholder for dropdown: unfollow, block
-    if (confirm('Unfollow?')) unfollowUser(id);
-    else if (confirm('Block?')) blockUser(id);
-}
-
-function unfollowUser(id) {
-    fetch(`${apiBase}/follow/unfollow`, {
-        method: 'POST',
-        body: JSON.stringify({ target_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => loadView('friends'));
-}
-
-function loadInbox() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div id="inboxNav">
-            <button onclick="loadChats()">Chats</button>
-            <button onclick="loadGroupChats()">Groups</button>
-        </div>
-        <div id="inboxList"></div>
-    `;
-    loadChats();  // Default
-}
-
-function loadChats() {
-    fetch(`${apiBase}/inbox/chats`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderInboxList(data, false));
-}
-
-function loadGroupChats() {
-    fetch(`${apiBase}/inbox/groups`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(data => renderInboxList(data, true));
-}
-
-function renderInboxList(items, isGroup) {
-    const list = document.getElementById('inboxList');
-    list.innerHTML = '';
-    items.forEach(item => {
-        const chatItem = document.createElement('div');
-        chatItem.classList.add('chat-item');
-        chatItem.innerHTML = `
-            <img src="${item.profile_pic_url || '/static/default.jpg'}" class="small-circle">
-            <span>${item.real_name || item.name} (${item.username || ''})<br><small>${item.last_message}</small></span>
-            <small>${new Date(item.last_timestamp).toLocaleTimeString()}</small>
-            ${item.unread > 0 ? `<span class="unread">${item.unread}</span>` : ''}
-        `;
-        chatItem.onclick = () => showChatModal(item.chat_id, isGroup);
-        list.appendChild(chatItem);
-    });
-}
-
-function showChatModal(chat_id, is_group) {
-    showModal('chatModal');
-    const chatHeader = document.getElementById('chatHeader');
-    const chatMessages = document.getElementById('chatMessages');
-    chatMessages.innerHTML = 'Loading...';
-    fetch(`${apiBase}/messages/${chat_id}?is_group=${is_group}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(messages => {
-        chatMessages.innerHTML = '';
-        messages.forEach(msg => {
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add(msg.sender_id == sessionStorage.getItem('user_id') ? 'sent' : 'received');
-            msgDiv.innerHTML = `
-                <p>${msg.text || ''}</p>
-                ${msg.media_url ? `<img src="${msg.media_url}">` : ''}
-                <small>${new Date(msg.timestamp).toLocaleString()}</small>
+async function loadStories() {
+    const response = await fetch(`${apiBase}/stories/feed`, { credentials: 'include' });
+    if (!response.ok) throw new Error('Failed to fetch stories');
+    stories = await response.json();
+    let storiesHtml = '<div class="stories-container">';
+    if (stories.length === 0) {
+        storiesHtml += `<p class="center">No stories to show. Add some friends or create your own!</p>`;
+    } else {
+        stories.forEach(userStory => {
+            const isRead = sessionStorage.getItem(`stories_read_${userStory.username}`) === 'true';
+            storiesHtml += `
+                <div class="story-item ${isRead ? 'read' : 'unread'}" onclick="showStoryModal('${userStory.username}')">
+                    <img src="${userStory.profile_pic_url || '/static/default-profile.png'}" alt="${userStory.username}" class="story-circle">
+                    <span class="story-username">${userStory.username}</span>
+                </div>
             `;
-            chatMessages.appendChild(msgDiv);
         });
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    });
-    // Load header: back, profile, dropdown
-    chatHeader.innerHTML = `
-        <button onclick="hideModal('chatModal')"><i class="fa fa-arrow-left"></i></button>
-        <img src="profile_pic" class="small-circle">
-        <span>Name</span>
-        <button onclick="showChatDropdown(${chat_id}, ${is_group})"><i class="fa fa-ellipsis-v"></i></button>
-    `;
-    // Fetch name/pic
-    if (!is_group) {
-        fetch(`${apiBase}/user/${chat_id}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(user => {
-            chatHeader.querySelector('img').src = user.profile_pic_url || '/static/default.jpg';
-            chatHeader.querySelector('span').textContent = user.real_name + ' (@' + user.username + ')';
+    }
+    storiesHtml += '</div>';
+    contentDiv.innerHTML = storiesHtml + contentDiv.innerHTML;
+}
+
+async function loadPosts() {
+    currentPage = 1;
+    loading = false;
+    const postsDiv = document.createElement('div');
+    postsDiv.id = 'postsContainer';
+    contentDiv.appendChild(postsDiv);
+    await fetchPosts();
+    // Enable infinite scrolling
+    observer.observe(document.querySelector('.post-card:last-child') || document.body);
+}
+
+async function fetchPosts() {
+    if (loading) return;
+    loading = true;
+    const response = await fetch(`${apiBase}/posts/feed?page=${currentPage}`, { credentials: 'include' });
+    const newPosts = await response.json();
+    if (newPosts.length > 0) {
+        const postsContainer = document.getElementById('postsContainer');
+        newPosts.forEach(post => {
+            postsContainer.appendChild(renderPost(post));
+        });
+        currentPage++;
+        loading = false;
+        // Re-observe the new last element
+        observer.observe(document.querySelector('.post-card:last-child'));
+    } else {
+        loading = false;
+        observer.unobserve(document.body);
+        const postsContainer = document.getElementById('postsContainer');
+        if (!postsContainer.innerHTML.includes('End of feed')) {
+            postsContainer.innerHTML += '<div class="center">End of feed.</div>';
+        }
+    }
+}
+
+async function loadReels() {
+    currentPage = 1;
+    loading = false;
+    contentDiv.innerHTML = '<div id="reelsContainer"></div>';
+    await fetchReels();
+    observer.observe(document.querySelector('.reel-card:last-child') || document.body);
+}
+
+async function fetchReels() {
+    if (loading) return;
+    loading = true;
+    const response = await fetch(`${apiBase}/reels/feed?page=${currentPage}`, { credentials: 'include' });
+    const newReels = await response.json();
+    if (newReels.length > 0) {
+        const reelsContainer = document.getElementById('reelsContainer');
+        newReels.forEach(reel => {
+            reelsContainer.appendChild(renderReel(reel));
+        });
+        currentPage++;
+        loading = false;
+        observer.observe(document.querySelector('.reel-card:last-child'));
+    } else {
+        loading = false;
+        observer.unobserve(document.body);
+        const reelsContainer = document.getElementById('reelsContainer');
+        if (!reelsContainer.innerHTML.includes('End of reels')) {
+            reelsContainer.innerHTML += '<div class="center">End of reels.</div>';
+        }
+    }
+}
+
+async function loadFriendsView() {
+    const requestsResponse = await fetch(`${apiBase}/friends/requests`, { credentials: 'include' });
+    const requests = await requestsResponse.json();
+    const friendsResponse = await fetch(`${apiBase}/friends`, { credentials: 'include' });
+    const friends = await friendsResponse.json();
+    
+    let html = `<h2>Friend Requests</h2>`;
+    if (requests.length > 0) {
+        requests.forEach(req => {
+            html += `
+                <div class="list-item">
+                    <img src="${req.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+                    <span>${req.real_name} (@${req.username})</span>
+                    <button onclick="acceptFriendRequest('${req.id}')">Accept</button>
+                    <button onclick="rejectFriendRequest('${req.id}')">Reject</button>
+                </div>
+            `;
         });
     } else {
-        fetch(`${apiBase}/group/${chat_id}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(group => {
-            chatHeader.querySelector('img').src = group.profile_pic_url || '/static/default.jpg';
-            chatHeader.querySelector('span').textContent = group.name;
-        });
+        html += `<p class="center">No new friend requests.</p>`;
     }
-    // Load custom: nickname, wallpaper
-    fetch(`${apiBase}/chat/custom?chat_id=${chat_id}&is_group=${is_group}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(custom => {
-        if (custom.nickname) chatHeader.querySelector('span').textContent = custom.nickname;
-        if (custom.wallpaper_url) document.getElementById('chatModal').style.backgroundImage = `url(${custom.wallpaper_url})`;
-    });
-    document.getElementById('chatInput').focus();
-    sessionStorage.setItem('currentChatId', chat_id);
-    sessionStorage.setItem('currentIsGroup', is_group);
-}
 
-function showChatDropdown(chat_id, is_group) {
-    // Dropdown: customize name, change wallpaper, search, view user/group, disappearing, block, report
-    showModal('chatDropdownModal');
-    const dropdownContent = document.getElementById('chatDropdownContent');
-    dropdownContent.innerHTML = `
-        <button onclick="customizeName(${chat_id}, ${is_group})">Customize Name</button>
-        <button onclick="changeWallpaper(${chat_id}, ${is_group})">Change Wallpaper</button>
-        <button onclick="searchChat(${chat_id}, ${is_group})">Search</button>
-        <button onclick="viewProfile(${chat_id}, ${is_group})">View ${is_group ? 'Group' : 'User'}</button>
-        <button onclick="toggleDisappearing(${chat_id}, ${is_group})">Disappearing Messages</button>
-        <button onclick="blockChat(${chat_id}, ${is_group})">Block</button>
-        <button onclick="reportChat(${chat_id}, ${is_group})">Report</button>
-    `;
-}
-
-function customizeName(chat_id, is_group) {
-    const name = prompt('New name:');
-    if (name) {
-        fetch(`${apiBase}/chat/customize`, {
-            method: 'POST',
-            body: JSON.stringify({ chat_id, is_group, nickname: name }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => showChatModal(chat_id, is_group));
-    }
-}
-
-function changeWallpaper(chat_id, is_group) {
-    // Placeholder: upload and set
-    const url = prompt('Wallpaper URL:');
-    if (url) {
-        fetch(`${apiBase}/chat/customize`, {
-            method: 'POST',
-            body: JSON.stringify({ chat_id, is_group, wallpaper_url: url }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => showChatModal(chat_id, is_group));
-    }
-}
-
-function searchChat(chat_id, is_group) {
-    const query = prompt('Search query:');
-    if (query) {
-        fetch(`${apiBase}/chat/search?chat_id=${chat_id}&query=${query}&is_group=${is_group}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(messages => {
-            // Display in modal or something
-            alert('Found ' + messages.length + ' messages');
-        });
-    }
-}
-
-function viewProfile(chat_id, is_group) {
-    hideModal('chatModal');
-    loadView('profile', chat_id);
-}
-
-function toggleDisappearing(chat_id, is_group) {
-    const after = prompt('Disappearing after (off, 24h, 1w, 1m):');
-    if (after) {
-        // Set for future messages, existing handled in backend
-        alert('Set to ' + after);
-    }
-}
-
-function blockChat(chat_id, is_group) {
-    if (confirm('Block?')) {
-        blockUser(chat_id);
-        hideModal('chatModal');
-    }
-}
-
-function reportChat(chat_id, is_group) {
-    const reason = prompt('Reason:');
-    if (reason) {
-        fetch(`${apiBase}/post/report`, {  // Reuse report for chat
-            method: 'POST',
-            body: JSON.stringify({ post_id: chat_id, reason }),  // Misuse post_id for chat_id
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Reported'));
-    }
-}
-
-function sendChat() {
-    const text = document.getElementById('chatInput').value;
-    const chat_id = sessionStorage.getItem('currentChatId');
-    const is_group = sessionStorage.getItem('currentIsGroup');
-    fetch(`${apiBase}/message/send`, {
-        method: 'POST',
-        body: JSON.stringify({ receiver_id: chat_id, text, is_group }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => {
-        document.getElementById('chatInput').value = '';
-        showChatModal(chat_id, is_group);
-    });
-}
-
-// Update the loadProfile function
-// Update the loadProfile function in script.js to use the new endpoints
-function loadProfile(userId) {
-    // First get user basic info
-    fetch(`${apiBase}/user/${userId}`, { credentials: 'include' })
-    .then(res => {
-        if (res.status === 403) {
-            alert('This profile is private');
-            return;
-        }
-        return res.json();
-    })
-    .then(user => {
-        if (!user) return;
-        
-        // Then get stats
-        return fetch(`${apiBase}/user/stats/${userId}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(stats => {
-            return { user, stats };
-        });
-    })
-    .then(({ user, stats }) => {
-        const content = document.getElementById('content');
-        const isOwnProfile = userId == sessionStorage.getItem('user_id');
-        const isGroup = user.hasOwnProperty('creator_id');
-        
-        if (isGroup) {
-            renderGroupProfile(user);
-            return;
-        }
-        
-        // Get mutual friends if not own profile
-        let mutualFriendsPromise = Promise.resolve([]);
-        if (!isOwnProfile) {
-            mutualFriendsPromise = fetch(`${apiBase}/user/mutual/${userId}`, { credentials: 'include' })
-                .then(res => res.json());
-        }
-        
-        return mutualFriendsPromise.then(mutualFriends => {
-            content.innerHTML = `
-                <div class="profile-header">
-                    <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                        <div style="position: relative;">
-                            <img src="${user.profile_pic_url || '/static/default.jpg'}" class="profile-pic-large">
-                            ${isOwnProfile ? `
-                                <label for="profilePhotoUpload" class="camera-button">
-                                    <i class="fa fa-camera"></i>
-                                </label>
-                                <input id="profilePhotoUpload" type="file" accept="image/*" style="display: none;" onchange="uploadProfilePhoto(this)">
-                            ` : ''}
-                        </div>
-                        <div style="margin-left: 15px;">
-                            <h2>${user.real_name || 'Anonymous'}</h2>
-                            <p><strong>Unique Key: ${user.unique_key || 'N/A'}</strong></p>
-                            <div class="profile-stats">
-                                <span>Friends: ${stats.friends || 0}</span>
-                                <span>Followers: ${stats.followers || 0}</span>
-                                <span>Following: ${stats.following || 0}</span>
-                                <span>Posts: ${stats.posts || 0}</span>
-                                <span>Likes: ${stats.likes || 0}</span>
-                            </div>
-                            <div class="profile-actions">
-                                ${isOwnProfile ? `
-                                    <button onclick="showModal('profileEditModal')">Edit Profile</button>
-                                    <button onclick="shareProfile()">Share Profile</button>
-                                ` : `
-                                    <button onclick="followUser(${userId})">Follow</button>
-                                    <button onclick="messageUser(${userId})">Message</button>
-                                `}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
-                    
-                    ${!isOwnProfile && mutualFriends.length > 0 ? `
-                        <div class="mutual-friends">
-                            <p>Mutual friends: ${mutualFriends.map(f => f.real_name).join(', ')}</p>
-                        </div>
-                    ` : ''}
-                    
-                    <div class="profile-info">
-                        ${user.username ? `<p><strong>Username:</strong> ${user.username}</p>` : ''}
-                        ${user.dob ? `<p><strong>Date of Birth:</strong> ${user.dob}</p>` : ''}
-                        ${user.gender ? `<p><strong>Gender:</strong> ${user.gender}</p>` : ''}
-                        ${user.pronouns ? `<p><strong>Pronouns:</strong> ${user.pronouns}</p>` : ''}
-                        ${user.work ? `<p><strong>Work:</strong> ${user.work}</p>` : ''}
-                        ${user.education ? `<p><strong>Education:</strong> ${user.education}</p>` : ''}
-                        ${user.places ? `<p><strong>Places:</strong> ${user.places}</p>` : ''}
-                        ${user.relationship ? `<p><strong>Relationship:</strong> ${user.relationship}</p>` : ''}
-                        ${user.spouse ? `<p><strong>Spouse/Partner:</strong> ${user.spouse}</p>` : ''}
-                        ${user.email ? `<p><strong>Email:</strong> ${user.email}</p>` : ''}
-                        ${user.phone ? `<p><strong>Phone:</strong> ${user.phone}</p>` : ''}
-                    </div>
+    html += `<h2>My Friends</h2>`;
+    if (friends.length > 0) {
+        friends.forEach(friend => {
+            html += `
+                <div class="list-item" onclick="loadView('profile', '${friend.id}')">
+                    <img src="${friend.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+                    <span>${friend.real_name} (@${friend.username})</span>
+                    <button class="unfriend-button" onclick="event.stopPropagation(); unfriendUser('${friend.id}')">Unfriend</button>
                 </div>
-                
-                <div class="profile-nav">
-                    <button onclick="loadUserPosts(${userId})"><i class="fa fa-image"></i> Posts</button>
-                    <button onclick="loadUserReels(${userId})"><i class="fa fa-video"></i> Reels</button>
-                    ${isOwnProfile ? `
-                        <button onclick="loadLockedPosts()"><i class="fa fa-lock"></i> Locked</button>
-                        <button onclick="loadSavedPosts()"><i class="fa fa-bookmark"></i> Saved</button>
-                        <button onclick="loadReposts()"><i class="fa fa-retweet"></i> Reposts</button>
-                        <button onclick="loadLikedContent()"><i class="fa fa-heart"></i> Liked</button>
-                    ` : ''}
-                </div>
-                
-                <div id="profileContent"></div>
             `;
-            
-            loadUserPosts(userId);  // Default
-            
-            if (isOwnProfile) {
-                fillProfileEdit(user);
-                // Populate day dropdown
-                const daySelect = document.getElementById('editDobDay');
-                for (let i = 1; i <= 31; i++) {
-                    const option = document.createElement('option');
-                    option.value = i;
-                    option.textContent = i;
-                    daySelect.appendChild(option);
+        });
+    } else {
+        html += `<p class="center">You have no friends yet. Use search to find some!</p>`;
+    }
+    contentDiv.innerHTML = html;
+}
+
+async function loadInbox() {
+    const response = await fetch(`${apiBase}/inbox/chats`, { credentials: 'include' });
+    const chats = await response.json();
+    let html = `
+        <h2>Inbox</h2>
+        <div class="inbox-controls">
+            <button onclick="showModal('groupCreateModal')">Create Group</button>
+        </div>
+    `;
+    if (chats.length > 0) {
+        chats.forEach(chat => {
+            html += `
+                <div class="list-item" onclick="showChatModal('${chat.id}', ${chat.is_group || false})">
+                    <img src="${chat.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+                    <div class="chat-info">
+                        <span>${chat.name || chat.real_name}</span>
+                        <small>${chat.last_message}</small>
+                    </div>
+                    ${chat.unread > 0 ? `<span class="unread-count">${chat.unread}</span>` : ''}
+                </div>
+            `;
+        });
+    } else {
+        html += `<p class="center">No chats yet. Message a friend!</p>`;
+    }
+    contentDiv.innerHTML = html;
+}
+
+async function loadProfile(userId) {
+    const response = await fetch(`${apiBase}/user/profile/${userId}`, { credentials: 'include' });
+    const user = await response.json();
+    let isMyProfile = sessionStorage.getItem('user_id') === userId;
+
+    let html = `
+        <div class="profile-header">
+            <img src="${user.profile_pic_url || '/static/default-profile.png'}" alt="${user.username}" class="profile-pic">
+            <h2>${user.real_name} (@${user.username})</h2>
+            <p>${user.bio || 'No bio yet.'}</p>
+            <div class="profile-actions">
+                ${isMyProfile ? `<button onclick="showModal('profileEditModal')">Edit Profile</button>` :
+                    user.is_friend ? `<button class="unfriend-button" onclick="unfriendUser('${userId}')">Unfriend</button>` :
+                    user.is_pending ? `<button disabled>Request Sent</button>` :
+                    `<button class="follow-button" onclick="sendFriendRequest('${userId}')">Add Friend</button>`
                 }
-            }
-        });
-    });
+                ${!isMyProfile ? `<button onclick="messageUser('${userId}')">Message</button>` : ''}
+                ${!isMyProfile ? `<button class="report-button" onclick="showReportModal('${userId}', 'user')">Report</button>` : ''}
+            </div>
+        </div>
+        <h3>Posts</h3>
+        <div class="posts-list" id="userPosts"></div>
+        <h3>Reels</h3>
+        <div class="reels-list" id="userReels"></div>
+    `;
+    contentDiv.innerHTML = html;
+    user.posts.forEach(post => document.getElementById('userPosts').appendChild(renderPost(post)));
+    user.reels.forEach(reel => document.getElementById('userReels').appendChild(renderReel(reel)));
 }
 
-// Update the content loading functions
-function loadUserPosts(userId) {
-    fetch(`${apiBase}/user/posts/${userId}`, { credentials: 'include' })
-    .then(res => {
-        if (res.status === 403) {
-            document.getElementById('profileContent').innerHTML = '<p>This content is private</p>';
-            return;
-        }
-        return res.json();
-    })
-    .then(posts => {
-        if (!posts) return;
-        renderProfileContent(posts, 'Posts');
-    });
-}
-
-function loadUserReels(userId) {
-    fetch(`${apiBase}/user/reels/${userId}`, { credentials: 'include' })
-    .then(res => {
-        if (res.status === 403) {
-            document.getElementById('profileContent').innerHTML = '<p>This content is private</p>';
-            return;
-        }
-        return res.json();
-    })
-    .then(reels => {
-        if (!reels) return;
-        renderProfileContent(reels, 'Reels');
-    });
-}
-
-function loadLockedPosts() {
-    const userId = sessionStorage.getItem('user_id');
-    fetch(`${apiBase}/user/locked/${userId}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(posts => {
-        renderProfileContent(posts, 'Locked Posts');
-    });
-}
-
-function loadSavedPosts() {
-    const userId = sessionStorage.getItem('user_id');
-    fetch(`${apiBase}/user/saved/${userId}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(posts => {
-        renderProfileContent(posts, 'Saved Posts');
-    });
-}
-
-function loadReposts() {
-    const userId = sessionStorage.getItem('user_id');
-    fetch(`${apiBase}/user/reposts/${userId}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(posts => {
-        renderProfileContent(posts, 'Reposts');
-    });
-}
-
-function loadLikedContent() {
-    const userId = sessionStorage.getItem('user_id');
-    fetch(`${apiBase}/user/liked/${userId}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(posts => {
-        renderProfileContent(posts, 'Liked Content');
-    });
-}
-
-function renderProfileContent(items, title) {
-    const content = document.getElementById('profileContent');
-    content.innerHTML = `<h3>${title}</h3>`;
+async function executeSearch() {
+    const query = document.getElementById('searchInput').value;
+    const resultsDiv = document.getElementById('searchResults');
+    resultsDiv.innerHTML = '<div class="center">Searching...</div>';
     
-    if (items.length === 0) {
-        content.innerHTML += '<p>No content found</p>';
-        return;
-    }
+    const response = await fetch(`${apiBase}/search?q=${query}`, { credentials: 'include' });
+    const results = await response.json();
+    let html = '';
     
-    const gallery = document.createElement('div');
-    gallery.classList.add('posts-gallery');
-    
-    items.forEach(item => {
-        const itemDiv = document.createElement('div');
-        if (item.media_url) {
-            if (item.media_url.endsWith('.mp4')) {
-                itemDiv.innerHTML = `
-                    <video src="${item.media_url}" style="width: 100%; height: 100%; object-fit: cover;"></video>
-                `;
-            } else {
-                itemDiv.innerHTML = `
-                    <img src="${item.media_url}" style="width: 100%; height: 100%; object-fit: cover;">
-                `;
-            }
-        } else {
-            itemDiv.innerHTML = `
-                <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #f0f2f5;">
-                    <p>${item.description || 'No media'}</p>
+    html += `<h3>Users</h3>`;
+    if (results.users.length > 0) {
+        results.users.forEach(user => {
+            html += `
+                <div class="list-item" onclick="loadView('profile', '${user.id}')">
+                    <img src="${user.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+                    <span>${user.real_name} (@${user.username})</span>
                 </div>
             `;
-        }
-        itemDiv.style.aspectRatio = '1';
-        itemDiv.style.cursor = 'pointer';
-        itemDiv.onclick = () => viewPost(item.id);
-        gallery.appendChild(itemDiv);
-    });
-    
-    content.appendChild(gallery);
-}
-
-// Add function to view post
-function viewPost(postId) {
-    // Implement post viewing logic
-    alert('View post ' + postId);
-}
-
-function loadUserPosts(userId) {
-    // Fetch posts for user, render similar to feed
-    // Placeholder
-    document.getElementById('profileContent').innerHTML = 'Posts...';
-}
-
-function loadUserReels(userId) {
-    // Similar
-    document.getElementById('profileContent').innerHTML = 'Reels...';
-}
-
-function loadUserStories(userId) {
-    // Similar
-    document.getElementById('profileContent').innerHTML = 'Stories...';
-}
-
-function loadSavedPosts() {
-    // Fetch saves
-    document.getElementById('profileContent').innerHTML = 'Saved...';
-}
-
-function loadSearch() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <input id="searchInput" type="text" placeholder="Search">
-        <div id="searchResults"></div>
-    `;
-}
-
-function loadSearchResults() {
-    const query = document.getElementById('searchInput').value;
-    if (query) {
-        fetch(`${apiBase}/search?query=${query}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const results = document.getElementById('searchResults');
-            results.innerHTML = '';
-            data.users.forEach(user => {
-                const item = document.createElement('div');
-                item.innerHTML = `
-                    <img src="${user.profile_pic_url || '/static/default.jpg'}" class="small-circle">
-                    <span>${user.real_name} (@${user.username})</span>
-                `;
-                item.onclick = () => loadProfile(user.id);
-                results.appendChild(item);
-            });
         });
+    } else {
+        html += `<p class="center">No users found.</p>`;
     }
+
+    html += `<h3>Posts</h3>`;
+    if (results.posts.length > 0) {
+        results.posts.forEach(post => {
+            html += `<div class="post-card">${post.content}</div>`;
+        });
+    } else {
+        html += `<p class="center">No posts found.</p>`;
+    }
+
+    resultsDiv.innerHTML = html;
 }
 
-function loadNotifications() {
-    fetch(`${apiBase}/notifications`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(notifs => {
-        const content = document.getElementById('content');
-        content.innerHTML = '';
-        notifs.forEach(notif => {
-            const item = document.createElement('div');
-            item.textContent = `${notif.type}: ${notif.text || ''} from ${notif.from_user_id}`;
-            content.appendChild(item);
+async function loadNotifications() {
+    const response = await fetch(`${apiBase}/notifications`, { credentials: 'include' });
+    const notifications = await response.json();
+    let html = `<h2>Notifications</h2>`;
+    if (notifications.length > 0) {
+        notifications.forEach(notif => {
+            html += `<div class="list-item">${notif.text}</div>`;
         });
+    } else {
+        html += `<p class="center">No new notifications.</p>`;
+    }
+    contentDiv.innerHTML = html;
+}
+
+async function loadAdminDashboard() {
+    const postsResponse = await fetch(`${apiBase}/admin/reports/posts`, { credentials: 'include' });
+    const reportedPosts = await postsResponse.json();
+    const usersResponse = await fetch(`${apiBase}/admin/reports/users`, { credentials: 'include' });
+    const reportedUsers = await usersResponse.json();
+
+    let html = `
+        <h2>Admin Dashboard</h2>
+        <h3>Reported Posts</h3>
+        <div id="reportedPosts"></div>
+        <h3>Reported Users</h3>
+        <div id="reportedUsers"></div>
+        <h3>Send System Message</h3>
+        <div class="list-item">
+            <select id="systemMsgTarget">
+                <option value="all">All Users</option>
+                <!-- Add options for specific users later if needed -->
+            </select>
+            <textarea id="systemMsgText" placeholder="Message content"></textarea>
+            <button onclick="sendSystemMessage()">Send</button>
+        </div>
+    `;
+    contentDiv.innerHTML = html;
+
+    reportedPosts.forEach(post => {
+        const postDiv = document.createElement('div');
+        postDiv.className = 'list-item';
+        postDiv.innerHTML = `
+            <span>Post by @${post.username}: ${post.content}</span>
+            <small>Reason: ${post.reason}</small>
+            <button onclick="adminDeletePost('${post.target_id}')">Delete Post</button>
+        `;
+        document.getElementById('reportedPosts').appendChild(postDiv);
+    });
+
+    reportedUsers.forEach(user => {
+        const userDiv = document.createElement('div');
+        userDiv.className = 'list-item';
+        userDiv.innerHTML = `
+            <span>User: @${user.username}</span>
+            <small>Reason: ${user.reason}</small>
+            <button onclick="adminBanUser('${user.target_id}')">Ban User</button>
+        `;
+        document.getElementById('reportedUsers').appendChild(userDiv);
     });
 }
 
 function loadMenu() {
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <button onclick="showModal('settingsModal')">Settings</button>
-        <button onclick="showModal('supportModal')">Support</button>
-        <button onclick="logout()">Logout</button>
+    let html = `
+        <h2>Menu</h2>
+        <div class="menu-item" onclick="toggleDarkMode()">Toggle Dark Mode</div>
+        <div class="menu-item" onclick="handleLogout()">Logout</div>
     `;
+    contentDiv.innerHTML = html;
 }
 
-function logout() {
-    fetch(`${apiBase}/logout`, { method: 'POST', credentials: 'include' })
-    .then(() => location.reload());
-}
+// --- Interaction Functions ---
 
-function loadAdmin() {
-    if (sessionStorage.getItem('is_admin') != 1) return;
-    const content = document.getElementById('content');
-    content.innerHTML = `
-        <div id="adminNav">
-            <button onclick="loadAdminUsers()">Users</button>
-            <button onclick="loadAdminGroups()">Groups</button>
-            <button onclick="loadAdminReports()">Reports</button>
-            <button onclick="loadAdminInbox()">Inbox</button>
-        </div>
-        <div id="adminContent"></div>
-    `;
-    loadAdminUsers();  // Default
-}
-
-function loadAdminUsers() {
-    fetch(`${apiBase}/admin/users`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(users => {
-        const adminContent = document.getElementById('adminContent');
-        adminContent.innerHTML = '';
-        users.forEach(user => {
-            const item = document.createElement('div');
-            item.innerHTML = `
-                ${user.username} - ${user.real_name}
-                <button onclick="deleteUser(${user.id})">Delete</button>
-                <button onclick="banUser(${user.id})">Ban</button>
-                <button onclick="warnUser(${user.id})">Warn</button>
-            `;
-            adminContent.appendChild(item);
-        });
-    });
-}
-
-function deleteUser(id) {
-    if (confirm('Delete?')) {
-        fetch(`${apiBase}/admin/user/delete`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => loadAdminUsers());
-    }
-}
-
-function banUser(id) {
-    const duration = prompt('Duration (days or forever):');
-    if (duration) {
-        fetch(`${apiBase}/admin/user/ban`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id, duration }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Banned'));
-    }
-}
-
-function warnUser(id) {
-    const message = prompt('Warning message:');
-    if (message) {
-        fetch(`${apiBase}/admin/warning`, {
-            method: 'POST',
-            body: JSON.stringify({ user_id: id, message }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Sent'));
-    }
-}
-
-function loadAdminGroups() {
-    // Similar to users
-    document.getElementById('adminContent').innerHTML = 'Groups...';
-}
-
-function loadAdminReports() {
-    // Similar
-    document.getElementById('adminContent').innerHTML = 'Reports...';
-}
-
-function loadAdminInbox() {
-    // Similar to inbox
-    document.getElementById('adminContent').innerHTML = 'Admin Inbox...';
-}
-
-function login() {
-    const identifier = document.getElementById('loginIdentifier').value;
+function handleLogin() {
+    const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
-    fetch(`${apiBase}/login`, {
-        method: 'POST',
-        body: JSON.stringify({ identifier, password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('loginModal');
-            checkLoggedIn();
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function register() {
-    const username = document.getElementById('regUsername').value;
-    const password = document.getElementById('regPassword').value;
-    fetch(`${apiBase}/register`, {
+    fetch(`${apiBase}/auth/login`, {
         method: 'POST',
         body: JSON.stringify({ username, password }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(res => {
-        if (res.ok) res.json().then(data => {
-            alert('Registered! Key: ' + data.unique_key);
-            hideModal('registerModal');
-            checkLoggedIn();
-        });
-        else res.json().then(data => alert(data.error));
-    });
-}
-
-function forgot() {
-    const username = document.getElementById('forgotUsername').value;
-    const unique_key = document.getElementById('forgotKey').value;
-    fetch(`${apiBase}/forgot`, {
-        method: 'POST',
-        body: JSON.stringify({ username, unique_key }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('forgotModal');
-            setTimeout(() => showModal('resetModal'), 5000);
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function resetPassword() {
-    const password = document.getElementById('newPassword').value;
-    fetch(`${apiBase}/reset_password`, {
-        method: 'POST',
-        body: JSON.stringify({ password }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(res => {
-        if (res.ok) {
-            hideModal('resetModal');
-            showModal('loginModal');
-        } else res.json().then(data => alert(data.error));
-    });
-}
-
-function createPost() {
-    const type = document.getElementById('addType').value;
-    const description = document.getElementById('addDescription').value;
-    const file = document.getElementById('addMedia').files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    fetch(`${apiBase}/upload`, { method: 'POST', body: formData, credentials: 'include' })
-    .then(res => res.json())
-    .then(data => {
-        fetch(`${apiBase}/post/create`, {
-            method: 'POST',
-            body: JSON.stringify({ type, description, media_url: data.url }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => {
-            hideModal('addModal');
+    }).then(response => response.json()).then(data => {
+        if (data.message) {
+            sessionStorage.setItem('user_id', data.user_id);
+            if (data.is_admin) {
+                document.getElementById('adminBtn').style.display = 'block';
+            }
+            hideModal('authModal');
             loadView('home');
-        });
+        } else {
+            console.error(data.error);
+        }
     });
 }
 
-function likePost(id) {
-    fetch(`${apiBase}/post/like`, {
+function handleRegister() {
+    const username = document.getElementById('registerUsername').value;
+    const real_name = document.getElementById('registerRealName').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+    fetch(`${apiBase}/auth/register`, {
         method: 'POST',
-        body: JSON.stringify({ post_id: id }),
+        body: JSON.stringify({ username, real_name, email, password }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(() => alert('Liked/Unliked'));
-}
-
-function showCommentModal(id) {
-    showModal('commentModal');
-    sessionStorage.setItem('currentPostId', id);
-    fetch(`${apiBase}/post/comments/${id}`, { credentials: 'include' })
-    .then(res => res.json())
-    .then(comments => {
-        const commentList = document.getElementById('commentList');
-        commentList.innerHTML = '';
-        comments.forEach(comment => {
-            const item = document.createElement('div');
-            item.textContent = `${comment.real_name}: ${comment.text}`;
-            commentList.appendChild(item);
-        });
+    }).then(response => response.json()).then(data => {
+        if (data.message) {
+            console.log(data.message);
+            document.getElementById('registerFormContainer').style.display = 'none';
+            document.getElementById('loginFormContainer').style.display = 'block';
+        } else {
+            console.error(data.error);
+        }
     });
 }
 
-function addComment() {
-    const text = document.getElementById('commentText').value;
-    const post_id = sessionStorage.getItem('currentPostId');
-    fetch(`${apiBase}/post/comment`, {
+function handleLogout() {
+    fetch(`${apiBase}/auth/logout`, { credentials: 'include' })
+        .then(() => {
+            sessionStorage.removeItem('user_id');
+            window.location.reload();
+        });
+}
+
+async function createPost() {
+    const form = document.getElementById('postForm');
+    const formData = new FormData(form);
+    await fetch(`${apiBase}/posts/create`, {
         method: 'POST',
-        body: JSON.stringify({ post_id, text }),
+        body: formData,
+        credentials: 'include'
+    });
+    hideModal('addModal');
+    loadView('home');
+}
+
+async function createReel() {
+    const form = document.getElementById('reelForm');
+    const formData = new FormData(form);
+    await fetch(`${apiBase}/reels/create`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+    });
+    hideModal('addModal');
+    loadView('reels');
+}
+
+async function createStory() {
+    const form = document.getElementById('storyForm');
+    const formData = new FormData(form);
+    await fetch(`${apiBase}/stories/create`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+    });
+    hideModal('addModal');
+    loadView('home');
+}
+
+function likePost(postId) {
+    fetch(`${apiBase}/posts/like/${postId}`, {
+        method: 'POST',
+        credentials: 'include'
+    }).then(() => {
+        // Simple UI update. Full refresh can be used too.
+        const likeCountSpan = document.querySelector(`#post-${postId} .like-count`);
+        const likeBtn = document.querySelector(`#post-${postId} .like-button`);
+        const isLiked = likeBtn.classList.toggle('liked');
+        const currentLikes = parseInt(likeCountSpan.textContent);
+        likeCountSpan.textContent = isLiked ? currentLikes + 1 : currentLikes - 1;
+    });
+}
+
+function toggleComments(postId) {
+    const commentsDiv = document.querySelector(`#post-${postId} .comments-container`);
+    if (commentsDiv.classList.contains('hidden')) {
+        fetchComments(postId);
+    }
+    commentsDiv.classList.toggle('hidden');
+}
+
+async function fetchComments(postId) {
+    const commentsDiv = document.querySelector(`#post-${postId} .comments-container`);
+    const response = await fetch(`${apiBase}/posts/comments/${postId}`, { credentials: 'include' });
+    const comments = await response.json();
+    let commentsHtml = '';
+    comments.forEach(comment => {
+        commentsHtml += `
+            <div class="comment-item">
+                <img src="${comment.profile_pic_url || '/static/default-profile.png'}" class="profile-pic" style="width: 30px; height: 30px;">
+                <strong>@${comment.username}</strong>: ${comment.text}
+            </div>
+        `;
+    });
+    commentsHtml += `
+        <form class="comment-form" onsubmit="event.preventDefault(); postComment('${postId}')">
+            <input type="text" placeholder="Add a comment..." required>
+            <button type="submit">Send</button>
+        </form>
+    `;
+    commentsDiv.innerHTML = commentsHtml;
+}
+
+function postComment(postId) {
+    const form = document.querySelector(`#post-${postId} .comment-form`);
+    const input = form.querySelector('input');
+    const text = input.value;
+    fetch(`${apiBase}/posts/comment/${postId}`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
     }).then(() => {
-        document.getElementById('commentText').value = '';
-        showCommentModal(post_id);
+        input.value = '';
+        fetchComments(postId);
     });
 }
 
-function sharePost(id) {
-    alert('Share link: /post/' + id);
-}
-
-function followUser(id) {
-    fetch(`${apiBase}/follow/request`, {
+function sendFriendRequest(targetId) {
+    fetch(`${apiBase}/friends/add/${targetId}`, {
         method: 'POST',
-        body: JSON.stringify({ target_id: id }),
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(() => alert('Requested'));
+    }).then(() => {
+        console.log('Friend request sent');
+        loadView('profile', targetId);
+    });
 }
 
-function savePost(id) {
-    fetch(`${apiBase}/post/save`, {
+function unfriendUser(targetId) {
+    // This is a simplified unfriend. A real app would need to find the specific friend id.
+    fetch(`${apiBase}/friends/unfriend/${targetId}`, {
         method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(() => alert('Saved/Unsaved'));
+    }).then(() => {
+        console.log('Unfriended');
+        loadView('profile', targetId);
+    });
 }
 
-function repostPost(id) {
-    fetch(`${apiBase}/post/repost`, {
+function acceptFriendRequest(requestId) {
+    fetch(`${apiBase}/friends/accept/${requestId}`, {
         method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(() => alert('Reposted'));
+    }).then(() => {
+        loadView('friends');
+    });
 }
 
-function reportPost(id) {
-    const reason = prompt('Reason:');
-    if (reason) {
-        fetch(`${apiBase}/post/report`, {
-            method: 'POST',
-            body: JSON.stringify({ post_id: id, reason }),
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-        }).then(() => alert('Reported'));
-    }
-}
-
-function hidePost(id) {
-    fetch(`${apiBase}/post/hide`, {
+function rejectFriendRequest(requestId) {
+    fetch(`${apiBase}/friends/reject/${requestId}`, {
         method: 'POST',
-        body: JSON.stringify({ post_id: id }),
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
-    }).then(() => alert('Hidden'));
-}
-
-function toggleNotifications(user_id) {
-    fetch(`${apiBase}/post/subscribe`, {
-        method: 'POST',
-        body: JSON.stringify({ post_user_id: user_id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Toggled'));
-}
-
-function blockUser(id) {
-    fetch(`${apiBase}/block`, {
-        method: 'POST',
-        body: JSON.stringify({ target_id: id }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    }).then(() => alert('Blocked'));
+    }).then(() => {
+        loadView('friends');
+    });
 }
 
 function messageUser(id) {
     showChatModal(id, false);
 }
 
+function showChatModal(targetId, isGroup) {
+    const modal = document.getElementById('chatModal');
+    const chatHeader = document.getElementById('chatHeader');
+    const chatName = document.getElementById('chatName');
+    const chatProfilePic = document.getElementById('chatProfilePic');
+    const chatActions = document.getElementById('chatActions');
+    const chatForm = document.getElementById('chatForm');
+
+    chatForm.onsubmit = (e) => {
+        e.preventDefault();
+        sendMessage(targetId, isGroup);
+    };
+
+    chatActions.innerHTML = '';
+    
+    if (isGroup) {
+        chatHeader.innerHTML = '<h3>Group Chat</h3>';
+        chatActions.innerHTML = `
+            <button onclick="leaveGroup('${targetId}')">Leave Group</button>
+        `;
+        // In a real app, you'd fetch group details
+        chatName.textContent = "Group Chat";
+        chatProfilePic.src = "/static/default-group.png";
+    } else {
+        fetch(`${apiBase}/user/profile/${targetId}`, { credentials: 'include' }).then(res => res.json()).then(user => {
+            chatName.textContent = user.real_name;
+            chatProfilePic.src = user.profile_pic_url || '/static/default-profile.png';
+            chatActions.innerHTML = `<button onclick="loadView('profile', '${targetId}')">View Profile</button>`;
+        });
+    }
+
+    fetchMessages(targetId);
+    showModal('chatModal');
+}
+
+function fetchMessages(targetId) {
+    const messagesDiv = document.getElementById('chatMessages');
+    messagesDiv.innerHTML = '<div class="center">Loading messages...</div>';
+    fetch(`${apiBase}/inbox/messages/${targetId}`, { credentials: 'include' }).then(res => res.json()).then(messages => {
+        messagesDiv.innerHTML = '';
+        messages.forEach(msg => {
+            const isSent = msg.sender_id === sessionStorage.getItem('user_id');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${isSent ? 'sent-message' : 'received-message'}`;
+            msgDiv.textContent = msg.text;
+            messagesDiv.appendChild(msgDiv);
+        });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+}
+
+function sendMessage(targetId, isGroup) {
+    const input = document.getElementById('chatInput');
+    const text = input.value;
+    if (!text) return;
+
+    fetch(`${apiBase}/inbox/send`, {
+        method: 'POST',
+        body: JSON.stringify({ receiver_id: targetId, text, is_group: isGroup }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        input.value = '';
+        fetchMessages(targetId);
+    });
+}
+
 function createGroup() {
     const name = document.getElementById('groupName').value;
     const description = document.getElementById('groupDescription').value;
-    // Upload pic if any
     fetch(`${apiBase}/group/create`, {
         method: 'POST',
         body: JSON.stringify({ name, description }),
@@ -1219,22 +703,259 @@ function createGroup() {
     });
 }
 
-function editGroup() {
-    const group_id = sessionStorage.getItem('currentGroupId');
-    const name = document.getElementById('editGroupName').value;
-    const description = document.getElementById('editGroupDescription').value;
-    fetch(`${apiBase}/group/edit`, {
+function leaveGroup(groupId) {
+    fetch(`${apiBase}/group/leave/${groupId}`, {
         method: 'POST',
-        body: JSON.stringify({ group_id, name, description }),
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
     }).then(() => {
-        hideModal('groupEditModal');
-        showChatModal(group_id, true);
+        hideModal('chatModal');
+        loadView('inbox');
     });
 }
 
-function report() {
-    // Generic report
-    alert('Reported');
+function updateProfile() {
+    const form = document.getElementById('profileEditForm');
+    const formData = new FormData(form);
+    fetch(`${apiBase}/user/profile`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+    }).then(() => {
+        hideModal('profileEditModal');
+        loadView('profile', sessionStorage.getItem('user_id'));
+    });
+}
+
+function showReportModal(targetId, targetType) {
+    const form = document.getElementById('reportForm');
+    form.dataset.targetId = targetId;
+    form.dataset.targetType = targetType;
+    showModal('reportModal');
+}
+
+function reportContent() {
+    const form = document.getElementById('reportForm');
+    const target_id = form.dataset.targetId;
+    const target_type = form.dataset.targetType;
+    const reason = document.getElementById('reportReason').value;
+
+    fetch(`${apiBase}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ target_id, target_type, reason }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        hideModal('reportModal');
+        document.getElementById('reportReason').value = '';
+    });
+}
+
+function adminDeletePost(postId) {
+    fetch(`${apiBase}/admin/delete_post/${postId}`, {
+        method: 'POST',
+        credentials: 'include'
+    }).then(() => {
+        loadView('admin');
+    });
+}
+
+function adminBanUser(userId) {
+    fetch(`${apiBase}/admin/ban_user/${userId}`, {
+        method: 'POST',
+        credentials: 'include'
+    }).then(() => {
+        loadView('admin');
+    });
+}
+
+function sendSystemMessage() {
+    const target_id = document.getElementById('systemMsgTarget').value;
+    const message = document.getElementById('systemMsgText').value;
+    fetch(`${apiBase}/admin/send_system`, {
+        method: 'POST',
+        body: JSON.stringify({ target_id, message }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    }).then(() => {
+        document.getElementById('systemMsgText').value = '';
+    });
+}
+
+// --- UI Rendering Helpers ---
+
+function renderPost(post) {
+    const postCard = document.createElement('div');
+    postCard.className = 'post-card';
+    postCard.id = `post-${post.id}`;
+    const mediaHtml = post.media_url ? `<img src="${post.media_url}" class="post-media">` : '';
+    const likedClass = post.is_liked ? 'liked' : '';
+
+    postCard.innerHTML = `
+        <div class="user-info">
+            <img src="${post.profile_pic_url || '/static/default-profile.png'}" class="profile-pic" onclick="loadView('profile', '${post.user_id}')">
+            <div class="user-info-text">
+                <span class="username">${post.real_name}</span>
+                <small>@${post.username}</small>
+                <small>${new Date(post.timestamp).toLocaleDateString()}</small>
+            </div>
+        </div>
+        <p>${post.content}</p>
+        ${mediaHtml}
+        <div class="post-stats">
+            <span><span class="like-count">${post.like_count}</span> likes</span>
+            <span><span class="comment-count">${post.comment_count}</span> comments</span>
+        </div>
+        <div class="post-actions">
+            <button class="like-button ${likedClass}" onclick="likePost('${post.id}')"><i class="fa fa-heart"></i> Like</button>
+            <button class="comment-button" onclick="toggleComments('${post.id}')"><i class="fa fa-comment"></i> Comment</button>
+            <button class="share-button"><i class="fa fa-share"></i> Share</button>
+        </div>
+        <div class="comments-container hidden"></div>
+    `;
+    return postCard;
+}
+
+function renderReel(reel) {
+    const reelCard = document.createElement('div');
+    reelCard.className = 'reel-card';
+    const likedClass = reel.is_liked ? 'liked' : '';
+    reelCard.innerHTML = `
+        <video src="${reel.media_url}" class="reel-media" controls></video>
+        <div class="user-info">
+            <img src="${reel.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+            <div class="user-info-text">
+                <span class="username">${reel.real_name}</span>
+                <small>@${reel.username}</small>
+            </div>
+        </div>
+        <p>${reel.content}</p>
+        <div class="post-actions">
+            <button class="like-button ${likedClass}" onclick="likePost('${reel.id}')"><i class="fa fa-heart"></i> ${reel.like_count}</button>
+            <button class="comment-button" onclick="toggleComments('${reel.id}')"><i class="fa fa-comment"></i> ${reel.comment_count}</button>
+            <button class="share-button"><i class="fa fa-share"></i></button>
+        </div>
+    `;
+    return reelCard;
+}
+
+function handleIntersection(entries, observer) {
+    entries.forEach(entry => {
+        if (entry.isIntersecting && !loading) {
+            if (currentView === 'home') {
+                fetchPosts();
+            } else if (currentView === 'reels') {
+                fetchReels();
+            }
+        }
+    });
+}
+
+function showStoryModal(username) {
+    currentStoryUser = stories.find(s => s.username === username);
+    if (!currentStoryUser) return;
+    currentStoryIndex = 0;
+    const modal = document.getElementById('storyViewModal');
+    const container = document.getElementById('storyViewContainer');
+    
+    // Set stories as read for this user
+    sessionStorage.setItem(`stories_read_${username}`, 'true');
+    document.querySelector(`.story-item:has(img[alt="${username}"])`).classList.remove('unread');
+    document.querySelector(`.story-item:has(img[alt="${username}"])`).classList.add('read');
+
+    const renderStory = () => {
+        if (storyTimeout) clearTimeout(storyTimeout);
+        const story = currentStoryUser.stories[currentStoryIndex];
+        const mediaTag = story.media_url.endsWith('.mp4') ? `<video src="${story.media_url}" controls autoplay></video>` : `<img src="${story.media_url}">`;
+        container.innerHTML = `
+            <div class="story-user-info">
+                <img src="${currentStoryUser.profile_pic_url || '/static/default-profile.png'}" class="profile-pic">
+                <span>${currentStoryUser.username}</span>
+            </div>
+            ${mediaTag}
+        `;
+        currentStoryMedia = container.querySelector('video') || container.querySelector('img');
+
+        // Autoplay and set timeout for next story
+        if (currentStoryMedia.tagName === 'VIDEO') {
+            currentStoryMedia.play();
+            currentStoryMedia.onended = nextStory;
+        } else {
+            storyTimeout = setTimeout(nextStory, 5000); // 5 seconds for images
+        }
+    };
+
+    const nextStory = () => {
+        currentStoryIndex++;
+        if (currentStoryIndex < currentStoryUser.stories.length) {
+            renderStory();
+        } else {
+            hideModal('storyViewModal');
+        }
+    };
+
+    const prevStory = () => {
+        currentStoryIndex = Math.max(0, currentStoryIndex - 1);
+        renderStory();
+    };
+
+    // Touch and mouse events for navigation
+    let startX = 0;
+    let isHolding = false;
+    modal.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        isHolding = true;
+        storyHoldTimeout = setTimeout(() => {
+            if (currentStoryMedia && currentStoryMedia.tagName === 'VIDEO') {
+                currentStoryMedia.pause();
+            } else if (storyTimeout) {
+                clearTimeout(storyTimeout);
+            }
+        }, 300); // 300ms for a "hold"
+    });
+    modal.addEventListener('touchend', (e) => {
+        isHolding = false;
+        if (storyHoldTimeout) clearTimeout(storyHoldTimeout);
+        if (currentStoryMedia && currentStoryMedia.tagName === 'VIDEO') {
+            currentStoryMedia.play();
+        } else {
+            storyTimeout = setTimeout(nextStory, 5000);
+        }
+        const endX = e.changedTouches[0].clientX;
+        if (Math.abs(endX - startX) > 50) {
+            if (endX < startX) {
+                nextStory();
+            } else {
+                prevStory();
+            }
+        }
+    });
+
+    modal.addEventListener('mousedown', (e) => {
+        isHolding = true;
+        storyHoldTimeout = setTimeout(() => {
+            if (currentStoryMedia && currentStoryMedia.tagName === 'VIDEO') {
+                currentStoryMedia.pause();
+            } else if (storyTimeout) {
+                clearTimeout(storyTimeout);
+            }
+        }, 300);
+    });
+    modal.addEventListener('mouseup', () => {
+        if (storyHoldTimeout) clearTimeout(storyHoldTimeout);
+        if (isHolding) {
+            if (currentStoryMedia && currentStoryMedia.tagName === 'VIDEO') {
+                currentStoryMedia.play();
+            } else {
+                storyTimeout = setTimeout(nextStory, 5000);
+            }
+            isHolding = false;
+        }
+    });
+
+    renderStory();
+    showModal('storyViewModal');
+}
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark');
 }
