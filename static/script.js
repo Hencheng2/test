@@ -1,121 +1,56 @@
-// script.js - SociaFam frontend logic
+// script.js
+document.addEventListener('DOMContentLoaded', () => {
+    const user_id = 1; // Simulate logged-in user
+    const pages = ['home', 'reels', 'friends', 'inbox', 'profile', 'search', 'add', 'notifications', 'menu', 'admin'];
+    let activePage = 'home';
 
-// --- Helpers ---
-async function api(url, method = "GET", data = null, files = null) {
-  let opts = { method, credentials: "include" };
-  if (files) {
-    const formData = new FormData();
-    for (let key in files) formData.append(key, files[key]);
-    if (data) for (let key in data) formData.append(key, data[key]);
-    opts.body = formData;
-  } else if (data) {
-    opts.headers = { "Content-Type": "application/json" };
-    opts.body = JSON.stringify(data);
-  }
-  const res = await fetch(url, opts);
-  return res.json();
-}
-function showModal(id) {
-  document.querySelectorAll(".modal").forEach(m => m.classList.remove("show"));
-  document.getElementById(id).classList.add("show");
-}
-function hideModals() {
-  document.querySelectorAll(".modal").forEach(m => m.classList.remove("show"));
-}
+    function showPage(page) {
+        document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+        document.getElementById(page).style.display = 'block';
+        activePage = page;
+    }
 
-// --- Auth ---
-async function doLogin() {
-  const u = document.getElementById("login-username").value;
-  const p = document.getElementById("login-password").value;
-  let res = await api("/api/login", "POST", { username: u, password: p });
-  if (res.success) {
-    hideModals();
-    loadFeed();
-  } else alert(res.error);
-}
-async function doRegister() {
-  const u = document.getElementById("reg-username").value;
-  const p = document.getElementById("reg-password").value;
-  let res = await api("/api/register", "POST", { username: u, password: p });
-  if (res.success) {
-    alert("Registered. Unique key: " + res.unique_key);
-    hideModals();
-  } else alert(res.error);
-}
+    // Nav handlers
+    pages.forEach(page => {
+        const btn = document.getElementById(`${page}-btn`);
+        if (btn) btn.onclick = () => showPage(page);
+    });
 
-// --- Feed ---
-async function loadFeed() {
-  const posts = await api("/api/posts/feed");
-  const cont = document.getElementById("feed");
-  cont.innerHTML = "";
-  posts.forEach(p => {
-    let div = document.createElement("div");
-    div.className = "post";
-    div.innerHTML = `
-      <div class="post-header">
-        <img src="${p.owner.profile_photo || 'static/default.png'}">
-        <b>${p.owner.username}</b>
-      </div>
-      <div class="post-media">
-        ${p.media_url ? `<img src="${p.media_url}">` : ""}
-      </div>
-      <div class="post-actions">
-        <span onclick="likePost(${p.id})">❤️ ${p.likes_count}</span>
-        <span>${p.comments_count} 💬</span>
-      </div>
-      <div class="post-description">${p.description || ""}</div>
-    `;
-    cont.appendChild(div);
-  });
-}
-async function likePost(id) {
-  await api(`/api/post/${id}/like`, "POST");
-  loadFeed();
-}
+    // Modals
+    function openModal(id) { document.getElementById(id).style.display = 'block'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    document.querySelectorAll('.close').forEach(el => {
+        el.onclick = () => closeModal(el.closest('.modal').id);
+    });
+    window.onclick = (e) => {
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
+        }
+    };
 
-// --- Stories ---
-async function loadStories() {
-  const stories = await api("/api/stories/feed");
-  const cont = document.getElementById("stories");
-  cont.innerHTML = "";
-  stories.forEach(s => {
-    let d = document.createElement("div");
-    d.className = "story";
-    d.innerHTML = `<img src="${s.owner.profile_photo || 'static/default.png'}"><br>${s.owner.username}`;
-    cont.appendChild(d);
-  });
-}
+    // Example API calls
+    fetch('/api/posts').then(r => r.json()).then(posts => {
+        const container = document.getElementById('posts-container');
+        posts.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'post';
+            div.innerHTML = `
+                <div class="post-header">
+                    <img src="${p.profile_pic}" alt="">
+                    <div><strong>${p.real_name}</strong><br><small>${new Date(p.timestamp).toLocaleString()}</small></div>
+                </div>
+                ${p.content_url ? `<img src="${p.content_url}" style="max-width:100%;">` : ''}
+                <p>${p.description}</p>
+                <div class="post-actions">
+                    <button onclick="likePost(${p.id})">❤️ Like (${p.like_count})</button>
+                    <button onclick="commentOn(${p.id})">💬 Comment (${p.comment_count})</button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+    });
 
-// --- Reels ---
-async function loadReels() {
-  const reels = await api("/api/reels/feed");
-  const cont = document.getElementById("reels");
-  cont.innerHTML = "";
-  reels.forEach(r => {
-    let div = document.createElement("div");
-    div.className = "reel";
-    div.innerHTML = `
-      <video src="${r.media_url}" controls></video>
-      <p>${r.description || ""}</p>
-    `;
-    cont.appendChild(div);
-  });
-}
-
-// --- Notifications ---
-async function loadNotifications() {
-  const n = await api("/api/notifications");
-  const cont = document.getElementById("notifications");
-  cont.innerHTML = "";
-  n.forEach(x => {
-    let d = document.createElement("div");
-    d.className = "notification";
-    d.innerText = `[${x.type}] ${x.content}`;
-    cont.appendChild(d);
-  });
-}
-
-// --- Init ---
-document.addEventListener("DOMContentLoaded", () => {
-  showModal("login-modal");
+    window.likePost = (id) => {
+        fetch(`/api/post/${id}/like`, { method: 'POST' }).then(() => location.reload());
+    };
 });
