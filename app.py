@@ -289,9 +289,12 @@ def init_db():
     if c.fetchone() is None:
         hashed_password = hashlib.sha256(ADMIN_PASS.encode()).hexdigest()
         unique_key = generate_unique_key()
-        c.execute('''INSERT INTO users (username, password, real_name, is_admin, unique_key, account_status) 
+        c.execute('''INSERT INTO users (username, password, real_name, unique_key, is_admin, account_status) 
                      VALUES (?, ?, ?, ?, ?, ?)''', 
-                  (ADMIN_USERNAME, hashed_password, "Admin Henry", 1, unique_key, "active"))
+                  (ADMIN_USERNAME, hashed_password, "Admin Henry", unique_key, 1, "active"))
+        print(f"Admin user '{ADMIN_USERNAME}' created.")
+    else:
+        print(f"Admin user '{ADMIN_USERNAME}' already exists.")
     
     conn.commit()
     conn.close()
