@@ -1881,7 +1881,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             } else if (activeTab === 'groups') {
                 resultEl.innerHTML = `
-                    <img src="${item.profile_pic}" alt="${item.name}" class="search-result-avatar">
+                    <img src="${item.profile_pic}" alt="${item.name}" class="search-result-avatar" style="border-radius: 4px;">
                     <div class="search-result-info">
                         <div class="search-result-username">${item.name}</div>
                         <div class="search-result-realname">${item.members_count} members</div>
