@@ -258,61 +258,59 @@ def generate_unique_key():
     digits = string.digits
     return ''.join(secrets.choice(digits) for _ in range(2)) + ''.join(secrets.choice(letters) for _ in range(2))
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login')
+def login_page():
+    return render_template('index.html')
+
+@app.route('/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-        db = get_db()
-        user = db.execute("SELECT * FROM users WHERE username = ? AND is_banned = 0", (username,)).fetchone()
-        if user and user['password'] == hash_password(password):
-            session['user_id'] = user['id']
-            return jsonify({'success': True})
-        return jsonify({'success': False, 'message': 'Invalid credentials or account banned.'})
-    return render_template('index.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-        real_name = data.get('real_name')
-
-        if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c in "!@#$%^&*()_+-=" for c in password):
-            return jsonify({'success': False, 'message': 'Password must be 6+ chars with number and special char.'})
-
-        if username == ADMIN_USERNAME:
-            return jsonify({'success': False, 'message': 'This username is reserved.'})
-
-        db = get_db()
-        existing = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        if existing:
-            return jsonify({'success': False, 'message': 'Username already exists.'})
-
-        unique_key = generate_unique_key()
-        db.execute("""
-            INSERT INTO users (username, password, real_name, unique_key) 
-            VALUES (?, ?, ?, ?)
-        """, (username, hash_password(password), real_name, unique_key))
-        db.commit()
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE username = ? AND is_banned = 0", (username,)).fetchone()
+    if user and user['password'] == hash_password(password):
+        session['user_id'] = user['id']
         return jsonify({'success': True})
-    return render_template('index.html')
+    return jsonify({'success': False, 'message': 'Invalid credentials or account banned.'})
 
-@app.route('/forgot-password', methods=['GET', 'POST'])
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    real_name = data.get('real_name')
+
+    if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c in "!@#$%^&*()_+-=" for c in password):
+        return jsonify({'success': False, 'message': 'Password must be 6+ chars with number and special char.'})
+
+    if username == ADMIN_USERNAME:
+        return jsonify({'success': False, 'message': 'This username is reserved.'})
+
+    db = get_db()
+    existing = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if existing:
+        return jsonify({'success': False, 'message': 'Username already exists.'})
+
+    unique_key = generate_unique_key()
+    db.execute("""
+        INSERT INTO users (username, password, real_name, unique_key) 
+        VALUES (?, ?, ?, ?)
+    """, (username, hash_password(password), real_name, unique_key))
+    db.commit()
+    return jsonify({'success': True})
+
+@app.route('/forgot-password', methods=['POST'])
 def forgot_password():
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        key = data.get('key')
-        db = get_db()
-        user = db.execute("SELECT * FROM users WHERE username = ? AND unique_key = ?", (username, key)).fetchone()
-        if user:
-            session['reset_user_id'] = user['id']
-            return jsonify({'success': True})
-        return jsonify({'success': False})
-    return render_template('index.html')
+    data = request.get_json()
+    username = data.get('username')
+    key = data.get('key')
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE username = ? AND unique_key = ?", (username, key)).fetchone()
+    if user:
+        session['reset_user_id'] = user['id']
+        return jsonify({'success': True})
+    return jsonify({'success': False})
 
 @app.route('/set-new-password', methods=['POST'])
 def set_new_password():
@@ -463,7 +461,6 @@ def save_post(post_id):
 @app.route('/api/post/<int:post_id>/hide', methods=['POST'])
 @login_required
 def hide_post(post_id):
-    # Just for UI, no DB action needed
     return jsonify({'success': True})
 
 @app.route('/api/post/<int:post_id>/report', methods=['POST'])
@@ -864,7 +861,12 @@ def admin_reports():
 def static_files(filename):
     return send_from_directory('static', filename)
 
-# Run app
+# Health check
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok"}), 200
+
+# Initialize DB and run
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
