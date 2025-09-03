@@ -3054,7 +3054,6 @@ def send_support_message(ticket_id):
     return jsonify({'success': True, 'message': 'Message sent successfully'})
 
 # Initialize database
-init_db()
-
 if __name__ == '__main__':
+    init_db()  # Ensure this runs
     app.run(debug=True)
