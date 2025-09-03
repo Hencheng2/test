@@ -52,20 +52,27 @@ nav button:hover {
     display: flex;
     overflow-x: auto;
     margin-bottom: 20px;
+    padding: 10px 0;
 }
 
-.story {
+.story-circle {
     flex: 0 0 auto;
-    margin-right: 10px;
+    margin-right: 15px;
     text-align: center;
+    cursor: pointer;
 }
 
-.story img, .story video {
-    width: 100px;
-    height: 100px;
+.story-circle img {
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #833ab4;
+    border: 3px solid #e1306c;
+}
+
+.story-circle p {
+    margin-top: 5px;
+    font-size: 12px;
 }
 
 .post {
@@ -89,18 +96,40 @@ nav button:hover {
     margin-right: 10px;
 }
 
-.post img, .post video {
+.post-header div {
+    flex-grow: 1;
+}
+
+.post-header small {
+    color: #999;
+}
+
+.post-description {
+    margin-bottom: 10px;
+}
+
+.post-media {
     max-width: 100%;
     border-radius: 8px;
     margin-bottom: 10px;
+}
+
+.post-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .post-actions button {
     background: none;
     border: none;
     cursor: pointer;
-    margin-right: 10px;
     font-size: 14px;
+    color: #333;
+}
+
+.post-actions button i {
+    margin-right: 5px;
 }
 
 .modal {
@@ -110,7 +139,7 @@ nav button:hover {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0,0,0,0.5);
+    background-color: rgba(0,0,0,0.9);
     z-index: 2000;
 }
 
@@ -326,6 +355,30 @@ button[type="submit"]:hover {
 
 .admin-section {
     padding: 20px;
+}
+
+#story-modal .modal-content {
+    width: 100%;
+    height: 100%;
+    background: black;
+    color: white;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+}
+
+#story-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#story-content img, #story-content video {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
 }
 
 @media (max-width: 600px) {
