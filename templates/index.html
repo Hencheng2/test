@@ -1,92 +1,202 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>SociaFam</title>
-    <link rel="stylesheet" href="/static/style.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SociaFam - Social Media Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-
-<!-- All Pages -->
-<div id="home" class="page">
-    <div class="stories">
-        <!-- Dynamic stories will be loaded here -->
+    <div id="app">
+        <!-- Authentication Section -->
+        <div id="auth-section" class="section active">
+            <div class="auth-container">
+                <div class="auth-tabs">
+                    <button class="tab-btn active" data-tab="login">Login</button>
+                    <button class="tab-btn" data-tab="register">Register</button>
+                    <button class="tab-btn" data-tab="forgot">Forgot Password</button>
+                </div>
+                
+                <div class="auth-content">
+                    <!-- Login Form -->
+                    <form id="login-form" class="auth-form active">
+                        <h2>Welcome to SociaFam</h2>
+                        <div class="form-group">
+                            <input type="text" id="login-username" placeholder="Username" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="login-password" placeholder="Password" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Login</button>
+                    </form>
+                    
+                    <!-- Registration Form -->
+                    <form id="register-form" class="auth-form">
+                        <h2>Create Account</h2>
+                        <div class="form-group">
+                            <input type="text" id="register-username" placeholder="Username" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="register-password" placeholder="Password" required>
+                            <small>Must include letters, numbers, and special characters</small>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="register-realname" placeholder="Real Name (Optional)">
+                        </div>
+                        <button type="submit" class="btn-primary">Register</button>
+                    </form>
+                    
+                    <!-- Forgot Password Form -->
+                    <form id="forgot-form" class="auth-form">
+                        <h2>Reset Password</h2>
+                        <div class="form-group">
+                            <input type="text" id="forgot-username" placeholder="Username" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="forgot-unique-key" placeholder="Unique Key" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="forgot-new-password" placeholder="New Password" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Reset Password</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main App Section -->
+        <div id="main-section" class="section">
+            <!-- Navigation -->
+            <nav class="navbar">
+                <div class="nav-brand">
+                    <h2>SociaFam</h2>
+                </div>
+                <div class="nav-search">
+                    <input type="text" placeholder="Search...">
+                    <button><i class="fas fa-search"></i></button>
+                </div>
+                <div class="nav-links">
+                    <a href="#" class="nav-link active" data-page="home"><i class="fas fa-home"></i></a>
+                    <a href="#" class="nav-link" data-page="explore"><i class="fas fa-compass"></i></a>
+                    <a href="#" class="nav-link" data-page="reels"><i class="fas fa-film"></i></a>
+                    <a href="#" class="nav-link" data-page="messages"><i class="fas fa-envelope"></i></a>
+                    <a href="#" class="nav-link" data-page="notifications"><i class="fas fa-bell"></i></a>
+                    <a href="#" class="nav-link" data-page="profile"><i class="fas fa-user"></i></a>
+                    <a href="#" class="nav-link" id="logout-btn"><i class="fas fa-sign-out-alt"></i></a>
+                </div>
+            </nav>
+            
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Home/Feed Page -->
+                <div id="home-page" class="page active">
+                    <div class="container">
+                        <div class="feed">
+                            <!-- Create Post -->
+                            <div class="card create-post">
+                                <div class="post-header">
+                                    <img src="" alt="Profile" class="profile-pic" id="current-user-pic">
+                                    <input type="text" placeholder="What's on your mind?" id="post-text">
+                                </div>
+                                <div class="post-actions">
+                                    <button class="action-btn" data-type="image"><i class="fas fa-image"></i> Photo</button>
+                                    <button class="action-btn" data-type="video"><i class="fas fa-video"></i> Video</button>
+                                    <button class="action-btn" data-type="reel"><i class="fas fa-film"></i> Reel</button>
+                                    <button class="action-btn" data-type="story"><i class="fas fa-history"></i> Story</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Posts Feed -->
+                            <div id="posts-feed"></div>
+                        </div>
+                        
+                        <!-- Sidebar -->
+                        <div class="sidebar">
+                            <!-- User Profile Summary -->
+                            <div class="card profile-summary">
+                                <img src="" alt="Profile" class="profile-pic-large" id="sidebar-user-pic">
+                                <h3 id="sidebar-username"></h3>
+                                <p id="sidebar-bio"></p>
+                                <div class="profile-stats">
+                                    <div class="stat">
+                                        <span class="stat-number" id="stat-posts">0</span>
+                                        <span class="stat-label">Posts</span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-number" id="stat-followers">0</span>
+                                        <span class="stat-label">Followers</span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-number" id="stat-following">0</span>
+                                        <span class="stat-label">Following</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Friend Suggestions -->
+                            <div class="card">
+                                <h3>People You May Know</h3>
+                                <div id="friend-suggestions"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Other pages would be implemented similarly -->
+                <div id="explore-page" class="page">
+                    <h2>Explore Content</h2>
+                </div>
+                
+                <div id="reels-page" class="page">
+                    <h2>Reels</h2>
+                </div>
+                
+                <div id="messages-page" class="page">
+                    <h2>Messages</h2>
+                </div>
+                
+                <div id="notifications-page" class="page">
+                    <h2>Notifications</h2>
+                </div>
+                
+                <div id="profile-page" class="page">
+                    <h2>Your Profile</h2>
+                </div>
+                
+                <!-- Admin Panel (only visible to admins) -->
+                <div id="admin-page" class="page">
+                    <h2>Admin Panel</h2>
+                </div>
+            </div>
+        </div>
     </div>
-    <div id="posts-container">
-        <!-- Posts will be loaded here -->
+
+    <!-- File Upload Modal -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-title">Create Post</h2>
+            <form id="upload-form">
+                <div class="form-group">
+                    <textarea id="post-description" placeholder="Add a description..."></textarea>
+                </div>
+                <div class="form-group">
+                    <select id="post-visibility">
+                        <option value="public">Public</option>
+                        <option value="friends">Friends Only</option>
+                        <option value="private">Only Me</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <input type="file" id="post-file" accept="image/*,video/*">
+                </div>
+                <button type="submit" class="btn-primary">Post</button>
+            </form>
+        </div>
     </div>
-</div>
 
-<div id="reels" class="page">
-    <div id="reels-container">
-        <!-- Reels will be loaded here -->
-    </div>
-</div>
-
-<div id="friends" class="page">
-    <h2>Friends</h2>
-    <div id="friends-container"></div>
-</div>
-
-<div id="inbox" class="page">
-    <h2>Inbox</h2>
-    <div id="chats-container"></div>
-</div>
-
-<div id="profile" class="page">
-    <h2>Profile</h2>
-    <div id="profile-container"></div>
-</div>
-
-<div id="search" class="page">
-    <h2>Search</h2>
-    <div id="search-container"></div>
-</div>
-
-<div id="add" class="page">
-    <h2>Add Content</h2>
-    <div id="add-container"></div>
-</div>
-
-<div id="notifications" class="page">
-    <h2>Notifications</h2>
-    <div id="notifications-container"></div>
-</div>
-
-<div id="menu" class="page">
-    <h2>Menu</h2>
-    <div id="menu-container"></div>
-</div>
-
-<div id="admin" class="page">
-    <h2>Admin Dashboard</h2>
-    <div id="admin-container"></div>
-</div>
-
-<!-- Navigation -->
-<div class="navbar">
-    <button id="home-btn"><i class="fa fa-home"></i></button>
-    <button id="reels-btn"><i class="fa fa-video"></i></button>
-    <button id="friends-btn"><i class="fa fa-users"></i></button>
-    <button id="inbox-btn"><i class="fa fa-inbox"></i></button>
-    <button id="profile-btn"><i class="fa fa-user"></i></button>
-    <button id="search-btn"><i class="fa fa-search"></i></button>
-    <button id="add-btn"><i class="fa fa-plus"></i></button>
-    <button id="notifications-btn"><i class="fa fa-bell"></i></button>
-    <button id="menu-btn"><i class="fa fa-bars"></i></button>
-    <button id="admin-btn" style="display:none;"><i class="fa fa-shield-alt"></i></button>
-</div>
-
-<!-- Modals -->
-<div id="login-modal" class="modal">...</div>
-<div id="register-modal" class="modal">...</div>
-<div id="story-modal" class="modal">...</div>
-<div id="chat-modal" class="modal">...</div>
-<div id="group-modal" class="modal">...</div>
-<div id="edit-profile-modal" class="modal">...</div>
-
-<script src="/static/script.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
