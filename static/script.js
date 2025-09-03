@@ -1,6 +1,5 @@
 // script.js
 document.addEventListener('DOMContentLoaded', () => {
-    const user_id = 1; // Simulate logged-in user
     const pages = ['home', 'reels', 'friends', 'inbox', 'profile', 'search', 'add', 'notifications', 'menu', 'admin'];
     let activePage = 'home';
 
@@ -10,13 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
         activePage = page;
     }
 
-    // Nav handlers
     pages.forEach(page => {
         const btn = document.getElementById(`${page}-btn`);
         if (btn) btn.onclick = () => showPage(page);
     });
 
-    // Modals
     function openModal(id) { document.getElementById(id).style.display = 'block'; }
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     document.querySelectorAll('.close').forEach(el => {
