@@ -700,7 +700,18 @@ def get_user_liked_reels(user_id):
 
 @app.before_request
 def before_request():
-    if request.endpoint not in ['login', 'register', 'forgot_password', 'static'] and 'user_id' not in session:
+    if 'user_id' in session:
+        user = get_user_by_id(session['user_id'])
+        if user is None:
+            # Invalid session user ID, clear session
+            session.clear()
+    
+    # Allow public endpoints
+    if request.endpoint in ['login', 'register', 'forgot_password', 'static', 'reset_password']:
+        return
+    
+    # Require login for all other pages
+    if 'user_id' not in session:
         return redirect(url_for('login'))
 
 @app.route('/')
@@ -709,6 +720,10 @@ def index():
         return redirect(url_for('login'))
     
     user = get_user_by_id(session['user_id'])
+    if user is None:
+        session.clear()
+        return redirect(url_for('login'))
+    
     return render_template('index.html', user=dict(user))
 
 @app.route('/login', methods=['GET', 'POST'])
