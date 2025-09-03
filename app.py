@@ -1,1252 +1,725 @@
 # app.py
 import os
-import re
-import uuid
-import datetime
+import sqlite3
+import hashlib
+import secrets
+import string
+from datetime import datetime, timedelta
+from flask import Flask, request, jsonify, render_template, redirect, session, url_for, g
 from functools import wraps
-from collections import defaultdict
+import json
 
-from flask import (
-    Flask, g, jsonify, request, send_from_directory, redirect, url_for,
-    render_template, abort
-)
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import (
-    LoginManager, login_user, logout_user, login_required, current_user, UserMixin
-)
-from werkzeug.utils import secure_filename
-import config  # expects config.py in same directory
+# Import config
+from config import SECRET_KEY, ADMIN_USERNAME, ADMIN_PASS
 
-# --- App & DB Setup ---
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app = Flask(__name__)
+app.secret_key = SECRET_KEY
+DATABASE = 'sociafam.db'
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-app.config["SECRET_KEY"] = getattr(config, "SECRET_KEY", "dev-secret-key")
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "sociafam.db")
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64MB uploads
+# Database setup
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+    return db
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
+def init_db():
+    with app.app_context():
+        db = get_db()
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                real_name TEXT NOT NULL,
+                profile_pic TEXT DEFAULT '/static/default_pic.png',
+                bio TEXT,
+                dob TEXT,
+                gender TEXT,
+                pronouns TEXT,
+                work TEXT,
+                education_uni TEXT,
+                education_secondary TEXT,
+                location TEXT,
+                phone TEXT,
+                email TEXT,
+                social_link TEXT,
+                website TEXT,
+                relationship_status TEXT,
+                spouse TEXT,
+                unique_key TEXT UNIQUE NOT NULL,
+                is_admin INTEGER DEFAULT 0,
+                is_banned INTEGER DEFAULT 0,
+                warning TEXT
+            );
 
-# Allowed extensions for uploads (images/videos)
-ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
-ALLOWED_VIDEO_EXT = {"mp4", "mov", "webm", "ogg"}
-ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXT.union(ALLOWED_VIDEO_EXT)
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                content_type TEXT, -- 'text', 'image', 'video'
+                content_url TEXT,
+                description TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                views INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
 
+            CREATE TABLE IF NOT EXISTS stories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                content_type TEXT, -- 'image', 'video', 'audio'
+                content_url TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at DATETIME DEFAULT (datetime('now', '+24 hours')),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
 
-# --- Helpers ---
-def allowed_file(filename):
-    if "." not in filename:
-        return False
-    ext = filename.rsplit(".", 1)[1].lower()
-    return ext in ALLOWED_EXTENSIONS
+            CREATE TABLE IF NOT EXISTS reels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                video_url TEXT NOT NULL,
+                description TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                views INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
 
+            CREATE TABLE IF NOT EXISTS follows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                follower_id INTEGER,
+                followed_id INTEGER,
+                status TEXT DEFAULT 'pending', -- 'accepted', 'blocked'
+                FOREIGN KEY (follower_id) REFERENCES users (id),
+                FOREIGN KEY (followed_id) REFERENCES users (id)
+            );
 
-def file_save(file_storage, subfolder=""):
-    if not file_storage:
-        return None
-    filename = secure_filename(file_storage.filename)
-    if not allowed_file(filename):
-        return None
-    folder = app.config["UPLOAD_FOLDER"]
-    if subfolder:
-        folder = os.path.join(folder, subfolder)
-    os.makedirs(folder, exist_ok=True)
-    unique = f"{uuid.uuid4().hex}_{filename}"
-    path = os.path.join(folder, unique)
-    file_storage.save(path)
-    # return relative path to /static/uploads...
-    rel = os.path.relpath(path, BASE_DIR)
-    return rel.replace("\\", "/")
+            CREATE TABLE IF NOT EXISTS friendships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user1_id INTEGER,
+                user2_id INTEGER,
+                status TEXT DEFAULT 'pending', -- 'accepted', 'blocked'
+                FOREIGN KEY (user1_id) REFERENCES users (id),
+                FOREIGN KEY (user2_id) REFERENCES users (id)
+            );
 
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER,
+                receiver_id INTEGER,
+                group_id INTEGER,
+                content TEXT,
+                content_type TEXT, -- 'text', 'image', 'video', 'audio', 'sticker'
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (sender_id) REFERENCES users (id),
+                FOREIGN KEY (receiver_id) REFERENCES users (id),
+                FOREIGN KEY (group_id) REFERENCES groups (id)
+            );
 
-def generate_unique_key():
-    # 4 characters: 2 letters + 2 numbers shuffled
-    import random, string
-    letters = "".join(random.choices(string.ascii_uppercase, k=2))
-    numbers = "".join(random.choices("0123456789", k=2))
-    s = list(letters + numbers)
-    random.shuffle(s)
-    return "".join(s)
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                profile_pic TEXT DEFAULT '/static/group_default.png',
+                description TEXT,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                group_link TEXT UNIQUE,
+                allow_messages INTEGER DEFAULT 1,
+                add_members INTEGER DEFAULT 1,
+                approve_members INTEGER DEFAULT 0,
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            );
 
+            CREATE TABLE IF NOT EXISTS group_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER,
+                user_id INTEGER,
+                is_admin INTEGER DEFAULT 0,
+                joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES groups (id),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                type TEXT, -- 'friend_request', 'message', 'like', 'comment', 'group_invite', 'tag', 'system'
+                content TEXT,
+                from_user_id INTEGER,
+                is_read INTEGER DEFAULT 0,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (from_user_id) REFERENCES users (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS likes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                post_id INTEGER,
+                reel_id INTEGER,
+                story_id INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (post_id) REFERENCES posts (id),
+                FOREIGN KEY (reel_id) REFERENCES reels (id),
+                FOREIGN KEY (story_id) REFERENCES stories (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                post_id INTEGER,
+                reel_id INTEGER,
+                content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (post_id) REFERENCES posts (id),
+                FOREIGN KEY (reel_id) REFERENCES reels (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS saved_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                post_id INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (post_id) REFERENCES posts (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS saved_reels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                reel_id INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (reel_id) REFERENCES reels (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reported_by INTEGER,
+                user_id INTEGER,
+                group_id INTEGER,
+                reason TEXT,
+                description TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending',
+                FOREIGN KEY (reported_by) REFERENCES users (id),
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (group_id) REFERENCES groups (id)
+            );
+
+            CREATE TABLE IF NOT EXISTS blocked_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                blocker_id INTEGER,
+                blocked_id INTEGER,
+                FOREIGN KEY (blocker_id) REFERENCES users (id),
+                FOREIGN KEY (blocked_id) REFERENCES users (id)
+            );
+
+            INSERT OR IGNORE INTO users (username, password, real_name, unique_key, is_admin) 
+            VALUES (?, ?, ?, ?, 1);
+        """, (ADMIN_USERNAME, hashlib.sha256(ADMIN_PASS.encode()).hexdigest(), "Admin", "ADM1"))
+
+        db.commit()
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated_function
 
 def admin_required(f):
     @wraps(f)
-    def _wrap(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            return jsonify({"error": "Admin privileges required"}), 403
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect('/login')
+        user = get_db().execute("SELECT * FROM users WHERE id = ?", (session['user_id'],)).fetchone()
+        if not user['is_admin']:
+            return redirect('/')
         return f(*args, **kwargs)
-    return _wrap
+    return decorated_function
 
+# Utility functions
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# --- Models ---
-followers = db.Table(
-    "followers",
-    db.Column("follower_id", db.Integer, db.ForeignKey("user.id")),
-    db.Column("followed_id", db.Integer, db.ForeignKey("user.id"))
-)
+def generate_unique_key():
+    letters = string.ascii_uppercase
+    digits = string.digits
+    return ''.join(secrets.choice(digits) for _ in range(2)) + ''.join(secrets.choice(letters) for _ in range(2))
 
-group_members = db.Table(
-    "group_members",
-    db.Column("group_id", db.Integer, db.ForeignKey("group.id")),
-    db.Column("user_id", db.Integer, db.ForeignKey("user.id")),
-    db.Column("is_admin", db.Boolean, default=False)
-)
-
-
-class User(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False, index=True)
-    email = db.Column(db.String(255), unique=True, nullable=True)
-    password_hash = db.Column(db.String(255), nullable=False)
-    real_name = db.Column(db.String(120), nullable=True)
-    bio = db.Column(db.Text, nullable=True)
-    profile_photo = db.Column(db.String(512), nullable=True)  # path to upload
-    unique_key = db.Column(db.String(8), nullable=False, unique=True)
-
-    # optional fields
-    dob = db.Column(db.Date, nullable=True)
-    gender = db.Column(db.String(32), nullable=True)
-    pronouns = db.Column(db.String(32), nullable=True)
-    work = db.Column(db.String(255), nullable=True)
-    education = db.Column(db.String(255), nullable=True)
-    location = db.Column(db.String(255), nullable=True)
-    phone = db.Column(db.String(50), nullable=True)
-    website = db.Column(db.String(255), nullable=True)
-    relationship = db.Column(db.String(64), nullable=True)
-
-    is_admin = db.Column(db.Boolean, default=False)
-    is_banned = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-    # followers/following relationship
-    followed = db.relationship(
-        "User",
-        secondary=followers,
-        primaryjoin=(followers.c.follower_id == id),
-        secondaryjoin=(followers.c.followed_id == id),
-        backref=db.backref("followers_list", lazy="dynamic"),
-        lazy="dynamic"
-    )
-
-    posts = db.relationship("Post", backref="author", lazy="dynamic")
-    reels = db.relationship("Reel", backref="author", lazy="dynamic")
-    stories = db.relationship("Story", backref="author", lazy="dynamic")
-    sent_messages = db.relationship("Message", backref="sender", lazy="dynamic")
-
-    notifications = db.relationship("Notification", backref="user", lazy="dynamic")
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    def follow(self, user):
-        if not self.is_following(user):
-            self.followed.append(user)
-
-    def unfollow(self, user):
-        if self.is_following(user):
-            self.followed.remove(user)
-
-    def is_following(self, user):
-        return self.followed.filter(followers.c.followed_id == user.id).count() > 0
-
-    def to_dict(self, minimal=False):
-        d = {
-            "id": self.id,
-            "username": self.username,
-            "real_name": self.real_name,
-            "bio": self.bio,
-            "profile_photo": url_for("uploaded_file", filename=os.path.relpath(self.profile_photo or "", "static").replace("\\", "/"), _external=True) if self.profile_photo else None,
-            "followers_count": self.followers_list.count(),
-            "following_count": self.followed.count(),
-            "is_admin": bool(self.is_admin),
-            "created_at": self.created_at.isoformat()
-        }
-        if minimal:
-            return {"id": self.id, "username": self.username, "real_name": self.real_name, "profile_photo": d["profile_photo"]}
-        return d
-
-
-class Post(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    description = db.Column(db.Text, nullable=True)
-    media_path = db.Column(db.String(512), nullable=True)  # image or video
-    is_locked = db.Column(db.Boolean, default=False)  # visible only to owner if True
-    likes = db.relationship("PostLike", backref="post", lazy="dynamic")
-    comments = db.relationship("PostComment", backref="post", lazy="dynamic")
-    views = db.Column(db.Integer, default=0)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "owner": self.author.to_dict(minimal=True),
-            "description": self.description,
-            "media_url": url_for("uploaded_file", filename=os.path.relpath(self.media_path or "", "static").replace("\\", "/"), _external=True) if self.media_path else None,
-            "likes_count": self.likes.count(),
-            "comments_count": self.comments.count(),
-            "views": self.views,
-            "created_at": self.created_at.isoformat(),
-            "is_locked": self.is_locked
-        }
-
-
-class PostLike(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    post_id = db.Column(db.Integer, db.ForeignKey("post.id"))
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-
-class PostComment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    post_id = db.Column(db.Integer, db.ForeignKey("post.id"))
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-
-class Reel(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    media_path = db.Column(db.String(512), nullable=False)  # video or image+audio combo
-    description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    likes = db.relationship("ReelLike", backref="reel", lazy="dynamic")
-    comments = db.relationship("ReelComment", backref="reel", lazy="dynamic")
-    views = db.Column(db.Integer, default=0)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "owner": self.author.to_dict(minimal=True),
-            "media_url": url_for("uploaded_file", filename=os.path.relpath(self.media_path or "", "static").replace("\\", "/"), _external=True),
-            "description": self.description,
-            "likes_count": self.likes.count(),
-            "comments_count": self.comments.count(),
-            "views": self.views,
-            "created_at": self.created_at.isoformat()
-        }
-
-
-class ReelLike(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    reel_id = db.Column(db.Integer, db.ForeignKey("reel.id"))
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-
-class ReelComment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    reel_id = db.Column(db.Integer, db.ForeignKey("reel.id"))
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-
-class Story(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    media_path = db.Column(db.String(512), nullable=False)  # image or short video/audio
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    expires_at = db.Column(db.DateTime, nullable=False)
-    views = db.Column(db.Integer, default=0)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "owner": self.author.to_dict(minimal=True),
-            "media_url": url_for("uploaded_file", filename=os.path.relpath(self.media_path or "", "static").replace("\\", "/"), _external=True),
-            "created_at": self.created_at.isoformat(),
-            "expires_at": self.expires_at.isoformat(),
-            "views": self.views
-        }
-
-
-class FriendRequest(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    from_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    to_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    status = db.Column(db.String(20), default="pending")  # pending/accepted/declined
-
-
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    content = db.Column(db.Text, nullable=True)
-    media_path = db.Column(db.String(512), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    is_read = db.Column(db.Boolean, default=False)
-
-
-class Group(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    profile_photo = db.Column(db.String(512), nullable=True)
-    creator_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    members = db.relationship("User", secondary=group_members, backref="groups", lazy="dynamic")
-
-    # group permissions stored in a JSON-ish style columns (simpler as separate columns)
-    allow_nonadmin_edit = db.Column(db.Boolean, default=True)
-    allow_nonadmin_post = db.Column(db.Boolean, default=True)
-    allow_members_add = db.Column(db.Boolean, default=True)
-    require_admin_approval = db.Column(db.Boolean, default=False)
-
-    def to_dict(self, minimal=False):
-        d = {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "profile_photo": url_for("uploaded_file", filename=os.path.relpath(self.profile_photo or "", "static").replace("\\", "/"), _external=True) if self.profile_photo else None,
-            "members_count": self.members.count(),
-            "created_at": self.created_at.isoformat()
-        }
-        if minimal:
-            return {"id": self.id, "name": self.name, "members_count": d["members_count"]}
-        return d
-
-
-class Notification(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    is_read = db.Column(db.Boolean, default=False)
-    type = db.Column(db.String(64), nullable=True)  # e.g., system, message, like, follow
-
-
-class Report(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    reporter_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    reported_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    reported_post_id = db.Column(db.Integer, db.ForeignKey("post.id"), nullable=True)
-    message = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-    resolved = db.Column(db.Boolean, default=False)
-
-
-class AdminAction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    admin_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    action = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
-
-# --- Login manager ---
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-
-# --- Startup: Create admin user if provided in config ---
-# Ensure admin user exists (Flask 3.x compatible)
-with app.app_context():
-    admin_name = getattr(config, "ADMIN_USERNAME", None)
-    admin_pass = getattr(config, "ADMIN_PASS", None)
-    if admin_name and admin_pass:
-        admin = User.query.filter_by(username=admin_name).first()
-        if not admin:
-            u = User(
-                username=admin_name,
-                real_name="SociaFam Admin",
-                email=None,
-                unique_key=generate_unique_key(),
-                is_admin=True
-            )
-            u.set_password(admin_pass)
-            db.session.add(u)
-            db.session.commit()
-
-
-
-# --- Routes: Static files & index ---
-@app.route("/uploads/<path:filename>")
-def uploaded_file(filename):
-    # serve from static/uploads/...
-    # filename will be e.g., uploads/.. relative path; ensure safe
-    root = BASE_DIR
-    safe_path = os.path.join(root, filename)
-    if not os.path.exists(safe_path):
-        abort(404)
-    # serve with send_from_directory using directory part
-    directory = os.path.dirname(safe_path)
-    fname = os.path.basename(safe_path)
-    return send_from_directory(directory, fname)
-
-
-@app.route("/")
+@app.route('/')
+@login_required
 def index():
-    # serve the single-page app index.html
-    # frontend will handle showing login if not authenticated
-    return send_from_directory("static", "index.html")
+    return render_template('index.html')
 
-
-# --- Authentication endpoints ---
-@app.route("/api/register", methods=["POST"])
-def register():
-    data = request.form or request.json or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password")
-    email = data.get("email")
-    real_name = data.get("real_name", "")
-    # validations
-    if not username or not password:
-        return jsonify({"error": "username and password required"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters"}), 400
-    # check reserved admin combo
-    if username == getattr(config, "ADMIN_USERNAME", None) and password == getattr(config, "ADMIN_PASS", None):
-        return jsonify({"error": "This username and password combination is reserved"}), 400
-    if User.query.filter_by(username=username).first():
-        return jsonify({"error": "Username already taken"}), 400
-    if email and User.query.filter_by(email=email).first():
-        return jsonify({"error": "Email already taken"}), 400
-
-    user = User(
-        username=username,
-        email=email,
-        real_name=real_name,
-        unique_key=generate_unique_key()
-    )
-    user.set_password(password)
-    db.session.add(user)
-    db.session.commit()
-    return jsonify({"success": True, "unique_key": user.unique_key, "user": user.to_dict()}), 201
-
-
-@app.route("/api/login", methods=["POST"])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    data = request.form or request.json or {}
-    username = data.get("username") or ""
-    password = data.get("password") or ""
-    if not username or not password:
-        return jsonify({"error": "username and password required"}), 400
-    user = User.query.filter_by(username=username).first()
-    if not user or not user.check_password(password):
-        return jsonify({"error": "Invalid credentials"}), 401
-    if user.is_banned:
-        return jsonify({"error": "Account banned"}), 403
-    login_user(user)
-    return jsonify({"success": True, "user": user.to_dict()})
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE username = ? AND is_banned = 0", (username,)).fetchone()
+        if user and user['password'] == hash_password(password):
+            session['user_id'] = user['id']
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'message': 'Invalid credentials or account banned.'})
+    return render_template('login.html')
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        real_name = data.get('real_name')
 
-@app.route("/api/logout", methods=["POST"])
-@login_required
-def logout():
-    logout_user()
-    return jsonify({"success": True})
+        if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c in "!@#$%^&*()_+-=" for c in password):
+            return jsonify({'success': False, 'message': 'Password must be 6+ chars with number and special char.'})
 
+        if username == ADMIN_USERNAME:
+            return jsonify({'success': False, 'message': 'This username is reserved.'})
 
-@app.route("/api/forgot_password", methods=["POST"])
+        db = get_db()
+        existing = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        if existing:
+            return jsonify({'success': False, 'message': 'Username already exists.'})
+
+        unique_key = generate_unique_key()
+        db.execute("""
+            INSERT INTO users (username, password, real_name, unique_key) 
+            VALUES (?, ?, ?, ?)
+        """, (username, hash_password(password), real_name, unique_key))
+        db.commit()
+        return jsonify({'success': True})
+    return render_template('register.html')
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
-    # requires username and unique_key as per spec
-    data = request.form or request.json or {}
-    username = data.get("username")
-    unique_key = data.get("unique_key")
-    new_password = data.get("new_password")
-    if not username or not unique_key or not new_password:
-        return jsonify({"error": "username, unique_key and new_password required"}), 400
-    user = User.query.filter_by(username=username).first()
-    if not user or user.unique_key != unique_key:
-        return jsonify({"error": "Invalid credentials"}), 401
-    # set new password
-    user.set_password(new_password)
-    db.session.commit()
-    return jsonify({"success": True})
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        key = data.get('key')
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE username = ? AND unique_key = ?", (username, key)).fetchone()
+        if user:
+            session['reset_user_id'] = user['id']
+            return jsonify({'success': True})
+        return jsonify({'success': False})
+    return render_template('forgot_password.html')
 
-
-# --- User profile endpoints ---
-@app.route("/api/user/<int:user_id>", methods=["GET"])
-def get_user_profile(user_id):
-    user = User.query.get_or_404(user_id)
-    return jsonify(user.to_dict())
-
-
-@app.route("/api/me", methods=["GET"])
+@app.route('/set-new-password', methods=['POST'])
 @login_required
-def me():
-    return jsonify(current_user.to_dict())
+def set_new_password():
+    if 'reset_user_id' not in session:
+        return jsonify({'success': False})
+    data = request.get_json()
+    password = data.get('password')
+    if len(password) < 6 or not any(c.isdigit() for c in password) or not any(c in "!@#$%^&*()_+-=" for c in password):
+        return jsonify({'success': False, 'message': 'Weak password.'})
+    db = get_db()
+    db.execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(password), session['reset_user_id']))
+    db.commit()
+    session.pop('reset_user_id', None)
+    return jsonify({'success': True})
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/login')
 
-@app.route("/api/user/edit", methods=["POST"])
+# API: Stories
+@app.route('/api/stories', methods=['GET'])
 @login_required
-def edit_profile():
-    data = request.form or request.json or {}
-    # allow editing several fields
-    fields = ["real_name", "bio", "dob", "gender", "pronouns", "work",
-              "education", "location", "phone", "website", "relationship", "username", "email"]
-    changed = False
-    for f in fields:
-        if f in data:
-            val = data.get(f)
-            if f == "dob" and val:
-                try:
-                    current_user.dob = datetime.datetime.strptime(val, "%Y-%m-%d").date()
-                except:
-                    pass
-            elif f == "username" and val and val != current_user.username:
-                # ensure unique username
-                if User.query.filter(User.username == val).first():
-                    return jsonify({"error": "Username taken"}), 400
-                current_user.username = val
-                changed = True
-            elif f == "email":
-                if val and val != current_user.email and User.query.filter(User.email == val).first():
-                    return jsonify({"error": "Email taken"}), 400
-                current_user.email = val
-                changed = True
-            else:
-                setattr(current_user, f, val)
-                changed = True
-    # profile photo upload
-    if "profile_photo" in request.files:
-        f = request.files["profile_photo"]
-        saved = file_save(f, subfolder="profiles")
-        if saved:
-            current_user.profile_photo = saved
-            changed = True
+def get_stories():
+    db = get_db()
+    cur_user = session['user_id']
+    stories = db.execute("""
+        SELECT s.*, u.real_name, u.profile_pic, u.username
+        FROM stories s
+        JOIN users u ON s.user_id = u.id
+        JOIN follows f ON u.id = f.followed_id
+        WHERE f.follower_id = ? AND f.status = 'accepted' AND s.expires_at > datetime('now')
+        ORDER BY s.timestamp DESC
+    """, (cur_user,)).fetchall()
+    return jsonify([dict(row) for row in stories])
 
-    if changed:
-        db.session.commit()
-    return jsonify({"success": True, "user": current_user.to_dict()})
-
-
-# --- Following / Friends / Friend-requests ---
-@app.route("/api/follow/<int:user_id>", methods=["POST"])
-@login_required
-def follow_user(user_id):
-    if current_user.id == user_id:
-        return jsonify({"error": "Cannot follow yourself"}), 400
-    user = User.query.get_or_404(user_id)
-    current_user.follow(user)
-    db.session.commit()
-    # create notification
-    n = Notification(user_id=user.id, content=f"{current_user.username} started following you", type="follow")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route("/api/unfollow/<int:user_id>", methods=["POST"])
-@login_required
-def unfollow_user(user_id):
-    if current_user.id == user_id:
-        return jsonify({"error": "Cannot unfollow yourself"}), 400
-    user = User.query.get_or_404(user_id)
-    current_user.unfollow(user)
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route("/api/friend_request/send/<int:user_id>", methods=["POST"])
-@login_required
-def send_friend_request(user_id):
-    if current_user.id == user_id:
-        return jsonify({"error": "Cannot friend yourself"}), 400
-    # create friend request
-    existing = FriendRequest.query.filter_by(from_user_id=current_user.id, to_user_id=user_id, status="pending").first()
-    if existing:
-        return jsonify({"error": "Request already sent"}), 400
-    fr = FriendRequest(from_user_id=current_user.id, to_user_id=user_id)
-    db.session.add(fr)
-    db.session.commit()
-    # notify
-    n = Notification(user_id=user_id, content=f"{current_user.username} sent you a friend request", type="friend_request")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route("/api/friend_request/respond/<int:request_id>", methods=["POST"])
-@login_required
-def respond_friend_request(request_id):
-    data = request.form or request.json or {}
-    action = data.get("action")  # accept/decline
-    fr = FriendRequest.query.get_or_404(request_id)
-    if fr.to_user_id != current_user.id:
-        return jsonify({"error": "Unauthorized"}), 403
-    if action == "accept":
-        fr.status = "accepted"
-        # when accepted, create mutual follow relationships
-        from_user = User.query.get(fr.from_user_id)
-        to_user = User.query.get(fr.to_user_id)
-        from_user.follow(to_user)
-        to_user.follow(from_user)
-        db.session.commit()
-        # notify
-        n = Notification(user_id=fr.from_user_id, content=f"{current_user.username} accepted your friend request", type="friend_accepted")
-        db.session.add(n)
-        db.session.commit()
-        return jsonify({"success": True})
-    elif action == "decline":
-        fr.status = "declined"
-        db.session.commit()
-        return jsonify({"success": True})
-    else:
-        return jsonify({"error": "Unknown action"}), 400
-
-
-@app.route("/api/friends/list/<string:which>", methods=["GET"])
-@login_required
-def friends_list(which):
-    # which: followers, following, friends, requests, suggested
-    if which == "followers":
-        users = [u.to_dict(minimal=True) for u in current_user.followers_list]
-        return jsonify(users)
-    if which == "following":
-        users = [u.to_dict(minimal=True) for u in current_user.followed]
-        return jsonify(users)
-    if which == "friends":
-        # those that follow the user and the user follows back
-        follower_ids = {u.id for u in current_user.followers_list}
-        following_ids = {u.id for u in current_user.followed}
-        mutual = follower_ids.intersection(following_ids)
-        users = [User.query.get(uid).to_dict(minimal=True) for uid in mutual]
-        return jsonify(users)
-    if which == "requests":
-        # show incoming friend requests
-        frs = FriendRequest.query.filter_by(to_user_id=current_user.id, status="pending").all()
-        outs = []
-        for fr in frs:
-            u = User.query.get(fr.from_user_id)
-            outs.append({"request_id": fr.id, "user": u.to_dict(minimal=True), "created_at": fr.created_at.isoformat()})
-        return jsonify(outs)
-    if which == "suggested":
-        # very simple suggestion: friends of friends not already followed
-        suggestions = set()
-        for f in current_user.followed:
-            for foaf in f.followed:
-                if foaf.id != current_user.id and not current_user.is_following(foaf):
-                    suggestions.add(foaf)
-        outs = [u.to_dict(minimal=True) for u in suggestions]
-        return jsonify(outs)
-    return jsonify({"error": "unknown type"}), 400
-
-
-# --- Posts & interactions ---
-@app.route("/api/post/create", methods=["POST"])
-@login_required
-def create_post():
-    description = request.form.get("description") or request.json.get("description") if request.json else None
-    is_locked = bool(request.form.get("is_locked")) or bool(request.json.get("is_locked")) if request.json else False
-    media = request.files.get("media")
-    media_path = None
-    if media:
-        media_path = file_save(media, subfolder="posts")
-    post = Post(owner_id=current_user.id, description=description, media_path=media_path, is_locked=is_locked)
-    db.session.add(post)
-    db.session.commit()
-    return jsonify({"success": True, "post": post.to_dict()}), 201
-
-
-@app.route("/api/posts/feed", methods=["GET"])
-@login_required
-def feed_posts():
-    # endless scroll: accept offset and limit
-    try:
-        offset = int(request.args.get("offset", 0))
-        limit = int(request.args.get("limit", 20))
-    except:
-        offset, limit = 0, 20
-    # show posts by followed users + own posts, exclude locked posts of others
-    followed_ids = [u.id for u in current_user.followed]
-    query = Post.query.filter(
-        (Post.owner_id.in_(followed_ids + [current_user.id]))
-    ).order_by(Post.created_at.desc())
-    posts = query.offset(offset).limit(limit).all()
-    return jsonify([p.to_dict() for p in posts])
-
-
-@app.route("/api/post/<int:post_id>/like", methods=["POST"])
-@login_required
-def like_post(post_id):
-    post = Post.query.get_or_404(post_id)
-    existing = PostLike.query.filter_by(post_id=post_id, user_id=current_user.id).first()
-    if existing:
-        db.session.delete(existing)
-        db.session.commit()
-        return jsonify({"success": True, "action": "unliked"})
-    pl = PostLike(post_id=post_id, user_id=current_user.id)
-    db.session.add(pl)
-    db.session.commit()
-    n = Notification(user_id=post.owner_id, content=f"{current_user.username} liked your post", type="like")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True, "action": "liked"})
-
-
-@app.route("/api/post/<int:post_id>/comment", methods=["POST"])
-@login_required
-def comment_post(post_id):
-    data = request.form or request.json or {}
-    content = data.get("content")
-    if not content:
-        return jsonify({"error": "Comment content required"}), 400
-    post = Post.query.get_or_404(post_id)
-    pc = PostComment(post_id=post_id, user_id=current_user.id, content=content)
-    db.session.add(pc)
-    db.session.commit()
-    n = Notification(user_id=post.owner_id, content=f"{current_user.username} commented on your post", type="comment")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True, "comment": {"id": pc.id, "content": pc.content, "created_at": pc.created_at.isoformat()}})
-
-
-@app.route("/api/post/<int:post_id>/view", methods=["POST"])
-@login_required
-def view_post(post_id):
-    post = Post.query.get_or_404(post_id)
-    post.views = (post.views or 0) + 1
-    db.session.commit()
-    return jsonify({"success": True, "views": post.views})
-
-
-@app.route("/api/post/<int:post_id>/delete", methods=["POST"])
-@login_required
-def delete_post(post_id):
-    post = Post.query.get_or_404(post_id)
-    if post.owner_id != current_user.id and not current_user.is_admin:
-        return jsonify({"error": "Unauthorized"}), 403
-    # delete media file if exists
-    if post.media_path:
-        p = os.path.join(BASE_DIR, post.media_path)
-        try:
-            os.remove(p)
-        except:
-            pass
-    db.session.delete(post)
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route("/api/post/<int:post_id>/report", methods=["POST"])
-@login_required
-def report_post(post_id):
-    data = request.form or request.json or {}
-    reason = data.get("reason", "")
-    post = Post.query.get_or_404(post_id)
-    r = Report(reporter_id=current_user.id, reported_user_id=post.owner_id, reported_post_id=post_id, message=reason)
-    db.session.add(r)
-    db.session.commit()
-    # notify admin
-    # create a system notification to admin by creating admin notifications for all admins
-    admins = User.query.filter_by(is_admin=True).all()
-    for a in admins:
-        db.session.add(Notification(user_id=a.id, content=f"Post reported by {current_user.username}: {reason}", type="system"))
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-# --- Reels endpoints ---
-@app.route("/api/reel/create", methods=["POST"])
-@login_required
-def create_reel():
-    media = request.files.get("media")
-    description = request.form.get("description") or (request.json and request.json.get("description"))
-    if not media:
-        return jsonify({"error": "Media required"}), 400
-    saved = file_save(media, subfolder="reels")
-    if not saved:
-        return jsonify({"error": "Invalid media file"}), 400
-    reel = Reel(owner_id=current_user.id, media_path=saved, description=description)
-    db.session.add(reel)
-    db.session.commit()
-    return jsonify({"success": True, "reel": reel.to_dict()}), 201
-
-
-@app.route("/api/reels/feed", methods=["GET"])
-def reels_feed():
-    try:
-        offset = int(request.args.get("offset", 0))
-        limit = int(request.args.get("limit", 20))
-    except:
-        offset, limit = 0, 20
-    query = Reel.query.order_by(Reel.created_at.desc())
-    reels = query.offset(offset).limit(limit).all()
-    return jsonify([r.to_dict() for r in reels])
-
-
-@app.route("/api/reel/<int:reel_id>/like", methods=["POST"])
-@login_required
-def like_reel(reel_id):
-    reel = Reel.query.get_or_404(reel_id)
-    existing = ReelLike.query.filter_by(reel_id=reel_id, user_id=current_user.id).first()
-    if existing:
-        db.session.delete(existing)
-        db.session.commit()
-        return jsonify({"success": True, "action": "unliked"})
-    rl = ReelLike(reel_id=reel_id, user_id=current_user.id)
-    db.session.add(rl)
-    db.session.commit()
-    n = Notification(user_id=reel.owner_id, content=f"{current_user.username} liked your reel", type="like")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True, "action": "liked"})
-
-
-@app.route("/api/reel/<int:reel_id>/comment", methods=["POST"])
-@login_required
-def comment_reel(reel_id):
-    data = request.form or request.json or {}
-    content = data.get("content")
-    if not content:
-        return jsonify({"error": "Comment required"}), 400
-    reel = Reel.query.get_or_404(reel_id)
-    rc = ReelComment(reel_id=reel_id, user_id=current_user.id, content=content)
-    db.session.add(rc)
-    db.session.commit()
-    n = Notification(user_id=reel.owner_id, content=f"{current_user.username} commented on your reel", type="comment")
-    db.session.add(n)
-    db.session.commit()
-    return jsonify({"success": True, "comment": {"id": rc.id, "content": rc.content}})
-
-
-@app.route("/api/reel/<int:reel_id>/view", methods=["POST"])
-@login_required
-def view_reel(reel_id):
-    reel = Reel.query.get_or_404(reel_id)
-    reel.views = (reel.views or 0) + 1
-    db.session.commit()
-    return jsonify({"success": True, "views": reel.views})
-
-
-# --- Stories endpoints ---
-@app.route("/api/story/create", methods=["POST"])
+@app.route('/api/story', methods=['POST'])
 @login_required
 def create_story():
-    media = request.files.get("media")
-    if not media:
-        return jsonify({"error": "Media required"}), 400
-    saved = file_save(media, subfolder="stories")
-    if not saved:
-        return jsonify({"error": "Invalid file type"}), 400
-    now = datetime.datetime.utcnow()
-    expires = now + datetime.timedelta(hours=24)
-    story = Story(owner_id=current_user.id, media_path=saved, created_at=now, expires_at=expires)
-    db.session.add(story)
-    db.session.commit()
-    return jsonify({"success": True, "story": story.to_dict()}), 201
+    data = request.get_json()
+    content_type = data.get('content_type')
+    content_url = data.get('content_url')
+    db = get_db()
+    db.execute("INSERT INTO stories (user_id, content_type, content_url) VALUES (?, ?, ?)",
+               (session['user_id'], content_type, content_url))
+    db.commit()
+    return jsonify({'success': True})
 
-
-@app.route("/api/stories/feed", methods=["GET"])
+# API: Posts
+@app.route('/api/posts', methods=['GET'])
 @login_required
-def stories_feed():
-    # show stories of friends only (following & followed -> mutual friends?), your spec: only stories from friends
-    # interpret "friends" as mutual follows (both follow each other)
-    now = datetime.datetime.utcnow()
-    mutual_ids = []
-    follower_ids = {u.id for u in current_user.followers_list}
-    following_ids = {u.id for u in current_user.followed}
-    mutual_ids = list(follower_ids.intersection(following_ids))
-    stories = Story.query.filter(Story.owner_id.in_(mutual_ids), Story.expires_at > now).order_by(Story.created_at.desc()).all()
-    return jsonify([s.to_dict() for s in stories])
+def get_posts():
+    db = get_db()
+    posts = db.execute("""
+        SELECT p.*, u.real_name, u.username, u.profile_pic, 
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comment_count
+        FROM posts p
+        JOIN users u ON p.user_id = u.id
+        ORDER BY p.timestamp DESC
+    """).fetchall()
+    return jsonify([dict(row) for row in posts])
 
-
-@app.route("/api/story/<int:story_id>/view", methods=["POST"])
+@app.route('/api/post', methods=['POST'])
 @login_required
-def view_story(story_id):
-    s = Story.query.get_or_404(story_id)
-    s.views = (s.views or 0) + 1
-    db.session.commit()
-    return jsonify({"success": True, "views": s.views})
+def create_post():
+    data = request.get_json()
+    content_type = data.get('content_type')
+    content_url = data.get('content_url')
+    description = data.get('description')
+    db = get_db()
+    db.execute("INSERT INTO posts (user_id, content_type, content_url, description) VALUES (?, ?, ?, ?)",
+               (session['user_id'], content_type, content_url, description))
+    db.commit()
+    return jsonify({'success': True})
 
-
-# --- Messaging endpoints (simple direct messages) ---
-@app.route("/api/chats/list", methods=["GET"])
+@app.route('/api/post/<int:post_id>/like', methods=['POST'])
 @login_required
-def chats_list():
-    # shows most recent chat per other user and groups separately
-    # gather distinct conversation partners from messages where current_user is either sender or receiver
-    partners = {}
-    messages = Message.query.filter(
-        (Message.sender_id == current_user.id) | (Message.receiver_id == current_user.id)
-    ).order_by(Message.created_at.desc()).all()
-    for m in messages:
-        other_id = m.receiver_id if m.sender_id == current_user.id else m.sender_id
-        if other_id not in partners:
-            partners[other_id] = {"user": User.query.get(other_id).to_dict(minimal=True), "last_message": m.content or "[media]" if m.media_path else m.content, "created_at": m.created_at.isoformat(), "unread": 0}
-    # compute unread counts
-    for pid in partners:
-        unread = Message.query.filter_by(sender_id=pid, receiver_id=current_user.id, is_read=False).count()
-        partners[pid]["unread"] = unread
-    return jsonify(list(partners.values()))
+def like_post(post_id):
+    db = get_db()
+    existing = db.execute("SELECT * FROM likes WHERE user_id = ? AND post_id = ?", (session['user_id'], post_id)).fetchone()
+    if existing:
+        db.execute("DELETE FROM likes WHERE id = ?", (existing['id'],))
+    else:
+        db.execute("INSERT INTO likes (user_id, post_id) VALUES (?, ?)", (session['user_id'], post_id))
+        # Notify
+        post = db.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,)).fetchone()
+        if post and post['user_id'] != session['user_id']:
+            db.execute("INSERT INTO notifications (user_id, type, from_user_id, content) VALUES (?, 'like', ?, ?)",
+                       (post['user_id'], session['user_id'], 'liked your post'))
+    db.commit()
+    return jsonify({'success': True})
 
-
-@app.route("/api/chat/send", methods=["POST"])
+# API: Reels
+@app.route('/api/reels', methods=['GET'])
 @login_required
-def send_chat():
-    receiver_id = int(request.form.get("receiver_id") or (request.json and request.json.get("receiver_id")))
-    content = request.form.get("content") or (request.json and request.json.get("content"))
-    media = request.files.get("media")
-    if not receiver_id:
-        return jsonify({"error": "receiver_id required"}), 400
-    if current_user.id == receiver_id:
-        return jsonify({"error": "Cannot send messages to yourself"}), 400
-    saved = None
-    if media:
-        saved = file_save(media, subfolder="messages")
-    m = Message(sender_id=current_user.id, receiver_id=receiver_id, content=content, media_path=saved)
-    db.session.add(m)
-    db.session.commit()
-    # notification to receiver
-    db.session.add(Notification(user_id=receiver_id, content=f"New message from {current_user.username}", type="message"))
-    db.session.commit()
-    return jsonify({"success": True, "message": {"id": m.id, "content": m.content, "created_at": m.created_at.isoformat()}})
+def get_reels():
+    db = get_db()
+    reels = db.execute("""
+        SELECT r.*, u.real_name, u.username, u.profile_pic,
+        (SELECT COUNT(*) FROM likes WHERE reel_id = r.id) as like_count,
+        (SELECT COUNT(*) FROM comments WHERE reel_id = r.id) as comment_count
+        FROM reels r
+        JOIN users u ON r.user_id = u.id
+        ORDER BY r.timestamp DESC
+    """).fetchall()
+    return jsonify([dict(row) for row in reels])
 
-
-@app.route("/api/chat/history/<int:other_id>", methods=["GET"])
+@app.route('/api/reel', methods=['POST'])
 @login_required
-def chat_history(other_id):
-    # return messages between current_user and other_id sorted asc
-    msgs = Message.query.filter(
-        ((Message.sender_id == current_user.id) & (Message.receiver_id == other_id)) |
-        ((Message.sender_id == other_id) & (Message.receiver_id == current_user.id))
-    ).order_by(Message.created_at.asc()).all()
-    out = []
-    for m in msgs:
-        out.append({
-            "id": m.id,
-            "from": m.sender_id,
-            "to": m.receiver_id,
-            "content": m.content,
-            "media_url": url_for("uploaded_file", filename=os.path.relpath(m.media_path or "", "static").replace("\\", "/"), _external=True) if m.media_path else None,
-            "created_at": m.created_at.isoformat(),
-            "is_read": m.is_read
-        })
-    # mark messages sent to current user as read
-    unread = Message.query.filter_by(sender_id=other_id, receiver_id=current_user.id, is_read=False).all()
-    for m in unread:
-        m.is_read = True
-    db.session.commit()
-    return jsonify(out)
+def create_reel():
+    data = request.get_json()
+    video_url = data.get('video_url')
+    description = data.get('description')
+    db = get_db()
+    db.execute("INSERT INTO reels (user_id, video_url, description) VALUES (?, ?, ?)",
+               (session['user_id'], video_url, description))
+    db.commit()
+    return jsonify({'success': True})
 
+# API: Friends
+@app.route('/api/friends/followers')
+@login_required
+def get_followers():
+    db = get_db()
+    followers = db.execute("""
+        SELECT u.*, f.status,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND followed_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) as mutuals
+        FROM follows f
+        JOIN users u ON f.follower_id = u.id
+        WHERE f.followed_id = ? AND f.status = 'accepted'
+    """, (session['user_id'], session['user_id'])).fetchall()
+    return jsonify([dict(row) for row in followers])
 
-# --- Group management ---
-@app.route("/api/group/create", methods=["POST"])
+@app.route('/api/friends/following')
+@login_required
+def get_following():
+    db = get_db()
+    following = db.execute("""
+        SELECT u.*, f.status,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND followed_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) as mutuals
+        FROM follows f
+        JOIN users u ON f.followed_id = u.id
+        WHERE f.follower_id = ? AND f.status = 'accepted'
+    """, (session['user_id'], session['user_id'])).fetchall()
+    return jsonify([dict(row) for row in following])
+
+@app.route('/api/friends/requests')
+@login_required
+def get_friend_requests():
+    db = get_db()
+    requests = db.execute("""
+        SELECT u.*, f.id as req_id,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND followed_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) as mutuals
+        FROM follows f
+        JOIN users u ON f.follower_id = u.id
+        WHERE f.followed_id = ? AND f.status = 'pending'
+    """, (session['user_id'], session['user_id'])).fetchall()
+    return jsonify([dict(row) for row in requests])
+
+@app.route('/api/friends/suggested')
+@login_required
+def get_suggested():
+    db = get_db()
+    # Get mutuals of followers
+    suggested = db.execute("""
+        SELECT u.*, 
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND followed_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) as mutuals
+        FROM users u
+        WHERE u.id NOT IN (SELECT followed_id FROM follows WHERE follower_id = ?)
+          AND u.id != ?
+        ORDER BY mutuals DESC LIMIT 10
+    """, (session['user_id'], session['user_id'], session['user_id'])).fetchall()
+    return jsonify([dict(row) for row in suggested])
+
+@app.route('/api/follow/<int:user_id>', methods=['POST'])
+@login_required
+def follow_user(user_id):
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO follows (follower_id, followed_id, status) VALUES (?, ?, 'pending')",
+               (session['user_id'], user_id))
+    db.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/accept/<int:req_id>', methods=['POST'])
+@login_required
+def accept_request(req_id):
+    db = get_db()
+    req = db.execute("SELECT * FROM follows WHERE id = ? AND followed_id = ?", (req_id, session['user_id'])).fetchone()
+    if req:
+        db.execute("UPDATE follows SET status = 'accepted' WHERE id = ?", (req_id,))
+        # Create mutual follow
+        db.execute("INSERT OR IGNORE INTO follows (follower_id, followed_id, status) VALUES (?, ?, 'accepted')",
+                   (req['followed_id'], req['follower_id']))
+        db.execute("INSERT INTO notifications (user_id, type, from_user_id, content) VALUES (?, 'friend_request', ?, 'accepted your follow request')",
+                   (req['follower_id'], session['user_id']))
+    db.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/decline/<int:req_id>', methods=['POST'])
+@login_required
+def decline_request(req_id):
+    db = get_db()
+    db.execute("DELETE FROM follows WHERE id = ?", (req_id,))
+    db.commit()
+    return jsonify({'success': True})
+
+# API: Messages
+@app.route('/api/messages/chats')
+@login_required
+def get_chats():
+    db = get_db()
+    chats = db.execute("""
+        SELECT u.real_name, u.username, u.profile_pic, m.content, m.timestamp,
+        (SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND sender_id = u.id AND is_read = 0) as unread
+        FROM messages m
+        JOIN users u ON (m.sender_id = u.id OR m.receiver_id = u.id)
+        WHERE (m.sender_id = ? OR m.receiver_id = ?) AND u.id != ?
+        GROUP BY u.id
+        ORDER BY m.timestamp DESC
+    """, (session['user_id'], session['user_id'], session['user_id'], session['user_id'])).fetchall()
+    return jsonify([dict(row) for row in chats])
+
+@app.route('/api/messages/send', methods=['POST'])
+@login_required
+def send_message():
+    data = request.get_json()
+    receiver_id = data.get('to')
+    content = data.get('content')
+    db = get_db()
+    db.execute("INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)",
+               (session['user_id'], receiver_id, content))
+    db.execute("INSERT INTO notifications (user_id, type, from_user_id, content) VALUES (?, 'message', ?, ?)",
+               (receiver_id, session['user_id'], 'sent you a message'))
+    db.commit()
+    return jsonify({'success': True})
+
+# API: Groups
+@app.route('/api/groups')
+@login_required
+def get_groups():
+    db = get_db()
+    groups = db.execute("""
+        SELECT g.*, gm.is_admin, COUNT(*) as member_count
+        FROM groups g
+        JOIN group_members gm ON g.id = gm.group_id
+        WHERE gm.user_id = ?
+        GROUP BY g.id
+    """, (session['user_id'],)).fetchall()
+    return jsonify([dict(row) for row in groups])
+
+@app.route('/api/group/create', methods=['POST'])
 @login_required
 def create_group():
-    data = request.form or request.json or {}
-    name = data.get("name")
-    description = data.get("description")
-    # group profile picture optional
-    profile = None
-    if "profile_photo" in request.files:
-        f = request.files["profile_photo"]
-        profile = file_save(f, subfolder="groups")
-    if not name:
-        return jsonify({"error": "Group name required"}), 400
-    g = Group(name=name, description=description, profile_photo=profile, creator_id=current_user.id)
-    db.session.add(g)
-    db.session.commit()
-    # add creator to members
-    insert_stmt = group_members.insert().values(group_id=g.id, user_id=current_user.id, is_admin=True)
-    db.session.execute(insert_stmt)
-    db.session.commit()
-    return jsonify({"success": True, "group": g.to_dict()}), 201
+    data = request.get_json()
+    name = data.get('name')
+    profile_pic = data.get('profile_pic', '/static/group_default.png')
+    db = get_db()
+    link = secrets.token_urlsafe(8)
+    db.execute("INSERT INTO groups (name, profile_pic, created_by, group_link) VALUES (?, ?, ?, ?)",
+               (name, profile_pic, session['user_id'], link))
+    group_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.execute("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 1)", (group_id, session['user_id']))
+    db.commit()
+    return jsonify({'success': True, 'id': group_id})
 
-
-@app.route("/api/group/<int:group_id>/add_member", methods=["POST"])
-@login_required
-def add_group_member(group_id):
-    data = request.form or request.json or {}
-    user_id = int(data.get("user_id"))
-    group = Group.query.get_or_404(group_id)
-    # permission check: only admins/creator can add if allow_members_add is False
-    # find if current_user is admin
-    gm = db.session.query(group_members).filter_by(group_id=group_id, user_id=current_user.id).first()
-    is_admin = bool(gm and gm.is_admin) if gm else False
-    if not (is_admin or group.allow_members_add):
-        return jsonify({"error": "Not permitted to add members"}), 403
-    # add
-    existing = db.session.query(group_members).filter_by(group_id=group_id, user_id=user_id).first()
-    if existing:
-        return jsonify({"error": "User already member"}), 400
-    insert_stmt = group_members.insert().values(group_id=group_id, user_id=user_id, is_admin=False)
-    db.session.execute(insert_stmt)
-    db.session.commit()
-    db.session.add(Notification(user_id=user_id, content=f"You were added to group {group.name}", type="group"))
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-@app.route("/api/group/<int:group_id>/members", methods=["GET"])
-@login_required
-def group_members_list(group_id):
-    group = Group.query.get_or_404(group_id)
-    members = db.session.query(group_members).filter_by(group_id=group_id).all()
-    out = []
-    for mem in members:
-        uid = mem.user_id
-        u = User.query.get(uid)
-        out.append({"user": u.to_dict(minimal=True), "is_admin": bool(mem.is_admin)})
-    return jsonify(out)
-
-
-@app.route("/api/group/<int:group_id>/leave", methods=["POST"])
-@login_required
-def group_leave(group_id):
-    group = Group.query.get_or_404(group_id)
-    db.session.execute(group_members.delete().where((group_members.c.group_id == group_id) & (group_members.c.user_id == current_user.id)))
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-# --- Notifications ---
-@app.route("/api/notifications", methods=["GET"])
+# API: Notifications
+@app.route('/api/notifications')
 @login_required
 def get_notifications():
-    notifs = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(100).all()
-    out = []
-    for n in notifs:
-        out.append({"id": n.id, "content": n.content, "type": n.type, "is_read": n.is_read, "created_at": n.created_at.isoformat()})
-    return jsonify(out)
+    db = get_db()
+    notifs = db.execute("""
+        SELECT n.*, u.real_name, u.profile_pic
+        FROM notifications n
+        LEFT JOIN users u ON n.from_user_id = u.id
+        WHERE n.user_id = ?
+        ORDER BY n.timestamp DESC
+    """, (session['user_id'],)).fetchall()
+    return jsonify([dict(row) for row in notifs])
 
-
-@app.route("/api/notifications/mark_read", methods=["POST"])
+@app.route('/api/mark-notif-read/<int:notif_id>', methods=['POST'])
 @login_required
-def mark_notifications_read():
-    data = request.form or request.json or {}
-    nid = data.get("id")
-    if nid:
-        n = Notification.query.get(int(nid))
-        if n and n.user_id == current_user.id:
-            n.is_read = True
-            db.session.commit()
-            return jsonify({"success": True})
-        return jsonify({"error": "Not found"}), 404
-    else:
-        Notification.query.filter_by(user_id=current_user.id, is_read=False).update({"is_read": True})
-        db.session.commit()
-        return jsonify({"success": True})
+def mark_notif_read(notif_id):
+    db = get_db()
+    db.execute("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", (notif_id, session['user_id']))
+    db.commit()
+    return jsonify({'success': True})
 
-
-# --- Admin actions & dashboard endpoints ---
-@app.route("/api/admin/users", methods=["GET"])
+# API: Profile
+@app.route('/api/profile/<int:user_id>')
 @login_required
+def get_profile(user_id):
+    db = get_db()
+    profile = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not profile:
+        return jsonify({'error': 'User not found'}), 404
+    # Mutual friends count
+    mutuals = db.execute("""
+        SELECT COUNT(*) as count FROM follows f1
+        JOIN follows f2 ON f1.follower_id = f2.followed_id AND f1.followed_id = f2.follower_id
+        WHERE f1.follower_id = ? AND f1.followed_id = ?
+    """, (session['user_id'], user_id)).fetchone()
+    # Posts
+    posts = db.execute("SELECT * FROM posts WHERE user_id = ? ORDER BY timestamp DESC", (user_id,)).fetchall()
+    return jsonify({
+        'profile': dict(profile),
+        'mutual_friends': mutuals['count'],
+        'posts': [dict(p) for p in posts]
+    })
+
+@app.route('/api/profile/edit', methods=['POST'])
+@login_required
+def edit_profile():
+    data = request.get_json()
+    db = get_db()
+    db.execute("""
+        UPDATE users SET real_name = ?, bio = ?, dob = ?, gender = ?, pronouns = ?,
+        work = ?, education_uni = ?, education_secondary = ?, location = ?,
+        phone = ?, email = ?, social_link = ?, website = ?, relationship_status = ?, spouse = ?
+        WHERE id = ?
+    """, (
+        data.get('real_name'), data.get('bio'), data.get('dob'), data.get('gender'), data.get('pronouns'),
+        data.get('work'), data.get('education_uni'), data.get('education_secondary'), data.get('location'),
+        data.get('phone'), data.get('email'), data.get('social_link'), data.get('website'),
+        data.get('relationship_status'), data.get('spouse'), session['user_id']
+    ))
+    db.commit()
+    return jsonify({'success': True})
+
+# API: Search
+@app.route('/api/search/<query>')
+@login_required
+def search(query):
+    db = get_db()
+    users = db.execute("SELECT * FROM users WHERE real_name LIKE ? OR username LIKE ?", (f'%{query}%', f'%{query}%')).fetchall()
+    posts = db.execute("SELECT p.*, u.real_name FROM posts p JOIN users u ON p.user_id = u.id WHERE p.description LIKE ?", (f'%{query}%',)).fetchall()
+    reels = db.execute("SELECT r.*, u.real_name FROM reels r JOIN users u ON r.user_id = u.id WHERE r.description LIKE ?", (f'%{query}%',)).fetchall()
+    return jsonify({
+        'users': [dict(u) for u in users],
+        'posts': [dict(p) for p in posts],
+        'reels': [dict(r) for r in reels]
+    })
+
+# API: Admin
+@app.route('/admin/users')
 @admin_required
-def admin_list_users():
-    users = User.query.order_by(User.created_at.desc()).all()
-    return jsonify([u.to_dict() for u in users])
+def admin_users():
+    db = get_db()
+    users = db.execute("SELECT * FROM users").fetchall()
+    return jsonify([dict(u) for u in users])
 
-
-@app.route("/api/admin/ban_user", methods=["POST"])
-@login_required
+@app.route('/admin/delete/user/<int:uid>', methods=['POST'])
 @admin_required
-def admin_ban_user():
-    data = request.form or request.json or {}
-    user_id = data.get("user_id")
-    action = data.get("action")  # ban/unban/delete
-    u = User.query.get_or_404(user_id)
-    if action == "ban":
-        u.is_banned = True
-        db.session.commit()
-        db.session.add(AdminAction(admin_id=current_user.id, action=f"Banned user {u.username}"))
-        db.session.commit()
-        return jsonify({"success": True})
-    elif action == "unban":
-        u.is_banned = False
-        db.session.commit()
-        db.session.add(AdminAction(admin_id=current_user.id, action=f"Unbanned user {u.username}"))
-        db.session.commit()
-        return jsonify({"success": True})
-    elif action == "delete":
-        # delete everything about that user
-        # remove files
-        for p in u.posts:
-            if p.media_path:
-                try:
-                    os.remove(os.path.join(BASE_DIR, p.media_path))
-                except:
-                    pass
-        db.session.delete(u)
-        db.session.commit()
-        db.session.add(AdminAction(admin_id=current_user.id, action=f"Deleted user {u.username}"))
-        db.session.commit()
-        return jsonify({"success": True})
-    else:
-        return jsonify({"error": "Unknown action"}), 400
+def admin_delete_user(uid):
+    db = get_db()
+    db.execute("DELETE FROM users WHERE id = ?", (uid,))
+    db.execute("DELETE FROM posts WHERE user_id = ?", (uid,))
+    db.commit()
+    return jsonify({'success': True})
 
+@app.route('/admin/warn/<int:uid>', methods=['POST'])
+@admin_required
+def admin_warn(uid):
+    db = get_db()
+    db.execute("INSERT INTO notifications (user_id, type, content) VALUES (?, 'system', ?)",
+               (uid, "You have been issued a warning by admin."))
+    db.commit()
+    return jsonify({'success': True})
 
-@app.route("/api/admin/reports", methods=["GET"])
-@login_required
+@app.route('/admin/ban/<int:uid>', methods=['POST'])
+@admin_required
+def admin_ban(uid):
+    db = get_db()
+    db.execute("UPDATE users SET is_banned = 1 WHERE id = ?", (uid,))
+    db.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/reports')
 @admin_required
 def admin_reports():
-    reports = Report.query.filter_by(resolved=False).order_by(Report.created_at.desc()).all()
-    out = []
-    for r in reports:
-        out.append({"id": r.id, "reporter_id": r.reporter_id, "reported_user_id": r.reported_user_id, "reported_post_id": r.reported_post_id, "message": r.message, "created_at": r.created_at.isoformat()})
-    return jsonify(out)
+    db = get_db()
+    reports = db.execute("""
+        SELECT r.*, u.real_name as reporter, u2.real_name as reported
+        FROM reports r
+        JOIN users u ON r.reported_by = u.id
+        LEFT JOIN users u2 ON r.user_id = u2.id
+    """).fetchall()
+    return jsonify([dict(r) for r in reports])
 
-
-@app.route("/api/admin/resolve_report", methods=["POST"])
+# API: Settings
+@app.route('/api/settings/privacy', methods=['POST'])
 @login_required
-@admin_required
-def resolve_report():
-    data = request.form or request.json or {}
-    report_id = data.get("report_id")
-    action = data.get("action")  # warn/ban/delete_post/ignore
-    r = Report.query.get_or_404(report_id)
-    r.resolved = True
-    db.session.commit()
-    if action == "warn":
-        # send system notification to reported user
-        db.session.add(Notification(user_id=r.reported_user_id, content="You have received a warning from admin", type="system"))
-        db.session.commit()
-    elif action == "ban":
-        u = User.query.get(r.reported_user_id)
-        if u:
-            u.is_banned = True
-            db.session.commit()
-    elif action == "delete_post" and r.reported_post_id:
-        p = Post.query.get(r.reported_post_id)
-        if p:
-            try:
-                if p.media_path:
-                    os.remove(os.path.join(BASE_DIR, p.media_path))
-            except:
-                pass
-            db.session.delete(p)
-            db.session.commit()
-    db.session.add(AdminAction(admin_id=current_user.id, action=f"Resolved report {r.id} with action {action}"))
-    db.session.commit()
-    return jsonify({"success": True})
+def update_privacy():
+    data = request.get_json()
+    db = get_db()
+    db.execute("UPDATE users SET profile_lock = ? WHERE id = ?", (data.get('profile_lock'), session['user_id']))
+    db.commit()
+    return jsonify({'success': True})
 
+# Static file fallback
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return app.send_static_file(filename)
 
-# --- Search endpoint ---
-@app.route("/api/search", methods=["GET"])
-@login_required
-def search():
-    q = request.args.get("q", "").strip()
-    tab = request.args.get("tab", "all")  # all, users, groups, posts, reels
-    if not q:
-        return jsonify([])
-    results = []
-    if tab in ("all", "users"):
-        users = User.query.filter(User.real_name.ilike(f"{q}%") | User.username.ilike(f"{q}%")).limit(50).all()
-        results.extend([{"type": "user", "data": u.to_dict(minimal=True)} for u in users])
-    if tab in ("all", "groups"):
-        groups = Group.query.filter(Group.name.ilike(f"%{q}%")).limit(50).all()
-        results.extend([{"type": "group", "data": g.to_dict(minimal=True)} for g in groups])
-    if tab in ("all", "posts"):
-        posts = Post.query.filter(Post.description.ilike(f"%{q}%")).limit(50).all()
-        results.extend([{"type": "post", "data": p.to_dict()} for p in posts])
-    if tab in ("all", "reels"):
-        reels = Reel.query.filter(Reel.description.ilike(f"%{q}%")).limit(50).all()
-        results.extend([{"type": "reel", "data": r.to_dict()} for r in reels])
-    return jsonify(results)
-
-
-# --- Misc utility endpoints (save post, repost, report user, block) ---
-@app.route("/api/post/<int:post_id>/save", methods=["POST"])
-@login_required
-def save_post(post_id):
-    # simplistic save: create a notification to the user (or a saved table)
-    # For full functionality we should have a saved_posts table; create minimal implementation
-    # create PostComment with special flag? Instead, store saved posts in user's bio string (not ideal).
-    # Implement saved_posts table quickly:
-    if not hasattr(db, "SavedPost"):
-        class SavedPost(db.Model):
-            __tablename__ = "saved_post"
-            id = db.Column(db.Integer, primary_key=True)
-            user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-            post_id = db.Column(db.Integer, db.ForeignKey("post.id"))
-            created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-        db.SavedPost = SavedPost
-        db.create_all()
-    SavedPost = getattr(db, "SavedPost")
-    exists = SavedPost.query.filter_by(user_id=current_user.id, post_id=post_id).first()
-    if exists:
-        db.session.delete(exists)
-        db.session.commit()
-        return jsonify({"success": True, "action": "unsaved"})
-    sp = SavedPost(user_id=current_user.id, post_id=post_id)
-    db.session.add(sp)
-    db.session.commit()
-    return jsonify({"success": True, "action": "saved"})
-
-
-@app.route("/api/user/<int:user_id>/block", methods=["POST"])
-@login_required
-def block_user(user_id):
-    # simplistic block: unsubscribe and mark in a blocks table
-    if not hasattr(db, "Block"):
-        class Block(db.Model):
-            __tablename__ = "blocks"
-            id = db.Column(db.Integer, primary_key=True)
-            blocker_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-            blocked_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-            created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-        db.Block = Block
-        db.create_all()
-    Block = getattr(db, "Block")
-    exists = Block.query.filter_by(blocker_id=current_user.id, blocked_id=user_id).first()
-    if exists:
-        db.session.delete(exists)
-        db.session.commit()
-        return jsonify({"success": True, "action": "unblocked"})
-    b = Block(blocker_id=current_user.id, blocked_id=user_id)
-    # also unfollow both ways
-    u = User.query.get(user_id)
-    if u:
-        current_user.unfollow(u)
-        u.unfollow(current_user)
-    db.session.add(b)
-    db.session.commit()
-    return jsonify({"success": True, "action": "blocked"})
-
-
-# --- Admin system broadcast ---
-@app.route("/api/admin/broadcast", methods=["POST"])
-@login_required
-@admin_required
-def admin_broadcast():
-    data = request.form or request.json or {}
-    message = data.get("message")
-    if not message:
-        return jsonify({"error": "message required"}), 400
-    users = User.query.all()
-    for u in users:
-        db.session.add(Notification(user_id=u.id, content=message, type="system"))
-    db.session.commit()
-    db.session.add(AdminAction(admin_id=current_user.id, action=f"Broadcasted message"))
-    db.session.commit()
-    return jsonify({"success": True})
-
-
-# --- Health check ---
-@app.route("/api/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "time": datetime.datetime.utcnow().isoformat()})
-
-
-# --- Error handlers ---
-@app.errorhandler(413)
-def file_too_large(e):
-    return jsonify({"error": "File too large"}), 413
-
-
-# --- Run app ---
-if __name__ == "__main__":
-    # Ensure DB exists
-    db.create_all()
-    # Create uploads subfolders
-    for s in ["profiles", "posts", "reels", "stories", "messages", "groups"]:
-        os.makedirs(os.path.join(app.config["UPLOAD_FOLDER"], s), exist_ok=True)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+# Run app
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True)
