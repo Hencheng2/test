@@ -7,7 +7,6 @@ function checkLoginStatus() {
     fetch('/api/profile')
         .then(response => {
             if (response.ok) {
-                // User is logged in, show homepage
                 document.querySelectorAll('.section').forEach(section => {
                     section.classList.remove('active');
                     section.style.display = 'none';
@@ -22,7 +21,6 @@ function checkLoginStatus() {
                     }
                 });
             } else {
-                // User is not logged in, show login modal and hide all sections
                 document.querySelectorAll('.section').forEach(section => {
                     section.classList.remove('active');
                     section.style.display = 'none';
@@ -32,7 +30,6 @@ function checkLoginStatus() {
             }
         })
         .catch(() => {
-            // Handle network errors, show login modal
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
                 section.style.display = 'none';
@@ -220,29 +217,101 @@ function resetPassword(e) {
         });
 }
 
+let current_page = 1;
+let loading = false;
+let stories_list = [];
+let current_story_index = 0;
+let touch_start_x = 0;
+let touch_start_y = 0;
+let touch_end_x = 0;
+let touch_end_y = 0;
+let is_holding = false;
+
 function loadHome() {
     showSection('home');
     fetch('/api/home')
         .then(response => response.json())
         .then(data => {
+            stories_list = data.stories;
             const storiesContainer = document.getElementById('home-stories');
             storiesContainer.innerHTML = '';
-            data.stories.forEach(story => {
+            stories_list.forEach((story, index) => {
                 const storyEl = document.createElement('div');
-                storyEl.className = 'story';
+                storyEl.className = 'story-circle';
                 storyEl.innerHTML = `
                     <img src="${story.media_url || '/static/default.jpg'}" alt="${story.user}">
                     <p>${story.user}</p>
                 `;
-                storyEl.addEventListener('click', () => viewStory(story.id));
+                storyEl.addEventListener('click', () => {
+                    current_story_index = index;
+                    showStory();
+                });
                 storiesContainer.appendChild(storyEl);
             });
+            current_page = 1;
+            loading = false;
+            document.getElementById('home-posts').innerHTML = '';
             loadPosts();
         })
         .catch(() => showModal('login-modal'));
 }
 
+function showStory() {
+    const story = stories_list[current_story_index];
+    const content = document.getElementById('story-content');
+    content.innerHTML = '';
+    const media = story.media_url.endswith('.mp4') ? document.createElement('video') : document.createElement('img');
+    media.src = story.media_url || '/static/default.jpg';
+    if (media.tagName === 'VIDEO') {
+        media.autoplay = true;
+        media.loop = true;
+    }
+    content.appendChild(media);
+    showModal('story-modal');
+    const modal = document.getElementById('story-modal');
+    modal.addEventListener('touchstart', (e) => {
+        touch_start_x = e.touches[0].clientX;
+        touch_start_y = e.touches[0].clientY;
+        if (media.tagName === 'VIDEO') {
+            is_holding = true;
+            media.pause();
+        }
+    });
+    modal.addEventListener('touchmove', (e) => {
+        touch_end_x = e.touches[0].clientX;
+        touch_end_y = e.touches[0].clientY;
+    });
+    modal.addEventListener('touchend', (e) => {
+        const delta_x = touch_end_x - touch_start_x;
+        const delta_y = touch_end_y - touch_start_y;
+        if (is_holding && media.tagName === 'VIDEO') {
+            media.play();
+            is_holding = false;
+        }
+        if (Math.abs(delta_x) > 50) {
+            if (delta_x > 0) {
+                // Swipe right - previous
+                if (current_story_index > 0) {
+                    current_story_index--;
+                    showStory();
+                }
+            } else {
+                // Swipe left - next
+                if (current_story_index < stories_list.length - 1) {
+                    current_story_index++;
+                    showStory();
+                }
+            }
+        } else if (delta_y > 50) {
+            // Swipe down - close
+            modal.style.display = 'none';
+        }
+    });
+}
+
 function loadPosts(page = 1) {
+    if (loading) return;
+    loading = true;
     fetch(`/api/posts?page=${page}`)
         .then(response => {
             if (!response.ok) throw new Error('Not logged in');
@@ -250,41 +319,81 @@ function loadPosts(page = 1) {
         })
         .then(data => {
             const postsContainer = document.getElementById('home-posts');
-            if (page === 1) postsContainer.innerHTML = '';
             data.posts.forEach(post => {
                 const postEl = document.createElement('div');
                 postEl.className = 'post';
                 postEl.innerHTML = `
                     <div class="post-header">
                         <img src="${post.user.profile_pic || '/static/default.jpg'}" alt="${post.user.username}">
-                        <span>${post.user.real_name}</span>
+                        <div>
+                            <span>${post.user.real_name}</span>
+                            <span>@${post.user.username}</span>
+                            <small>${new Date(post.timestamp).toLocaleDateString()}</small>
+                        </div>
                     </div>
-                    <p>${post.description}</p>
+                    <p class="post-description">${post.description}</p>
                     ${post.media_url ? post.media_url.includes('.mp4') ? 
                         `<video controls src="${post.media_url}"></video>` : 
-                        `<img src="${post.media_url}" alt="Post media">` : ''}
+                        `<img src="${post.media_url}" alt="Post media" class="post-media">` : ''}
                     <div class="post-actions">
-                        <button onclick="likePost(${post.id}, this)">${post.is_liked ? 'Unlike' : 'Like'} (${post.likes})</button>
-                        <button onclick="showCommentModal(${post.id})">Comment (${post.comments})</button>
-                        <button onclick="repost(${post.id})">Repost</button>
-                        <button onclick="savePost(${post.id}, this)">${post.is_saved ? 'Unsave' : 'Save'}</button>
+                        <button onclick="likePost(${post.id}, this)"><i class="fa fa-heart"></i> ${post.likes}</button>
+                        <button onclick="showCommentModal(${post.id})"><i class="fa fa-comment"></i> ${post.comments}</button>
+                        <button onclick="sharePost(${post.id})"><i class="fa fa-share"></i> Share</button>
+                        ${post.is_own ? '' : `<button onclick="follow(${post.user.id})"><i class="fa fa-user-plus"></i> Follow</button>`}
+                        <button onclick="savePost(${post.id}, this)"><i class="fa fa-bookmark"></i> Save</button>
+                        ${post.is_own ? '' : `<button onclick="repost(${post.id})"><i class="fa fa-retweet"></i> Repost</button>`}
+                        <span>Views: ${post.views}</span>
                         ${post.is_own ? '' : `
-                            <button onclick="report(${post.id}, 'post')">Report</button>
-                            <button onclick="hidePost(${post.id})">Hide</button>
-                            ${post.is_following ? `<button onclick="unfollow(${post.user.id})">Unfollow</button>` : `<button onclick="follow(${post.user.id})">Follow</button>`}
+                            <button onclick="report(${post.id}, 'post')"><i class="fa fa-flag"></i> Report</button>
+                            <button onclick="hidePost(${post.id})"><i class="fa fa-eye-slash"></i> Hide</button>
+                            <button onclick="toggleNotification(${post.id})"><i class="fa fa-bell"></i> Turn on notifications</button>
+                            <button onclick="blockUser(${post.user.id})"><i class="fa fa-ban"></i> Block</button>
                         `}
                     </div>
                 `;
                 postsContainer.appendChild(postEl);
             });
+            loading = false;
             if (data.has_next) {
-                const loadMore = document.createElement('button');
-                loadMore.textContent = 'Load More';
-                loadMore.onclick = () => loadPosts(page + 1);
-                postsContainer.appendChild(loadMore);
+                current_page++;
+            } else {
+                window.removeEventListener('scroll', scrollListener);
             }
         })
-        .catch(() => showModal('login-modal'));
+        .catch(() => {
+            loading = false;
+            showModal('login-modal');
+        });
+}
+
+let current_page = 1;
+let loading = false;
+
+function scrollListener() {
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100 && !loading) {
+        loadPosts(current_page);
+    }
+}
+
+window.addEventListener('scroll', scrollListener);
+
+function toggleNotification(postId) {
+    // Stub for turning on notifications
+    alert('Notifications turned on for this type of post');
+}
+
+function sharePost(postId) {
+    // Stub for sharing
+    alert('Post shared');
+}
+
+function blockUser(userId) {
+    fetch(`/api/block/user/${userId}`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            loadHome();
+        });
 }
 
 function loadReels(page = 1) {
@@ -308,14 +417,18 @@ function loadReels(page = 1) {
                     <video controls src="${reel.media_url}"></video>
                     <p>${reel.description}</p>
                     <div class="post-actions">
-                        <button onclick="likePost(${reel.id}, this)">${reel.is_liked ? 'Unlike' : 'Like'} (${reel.likes})</button>
-                        <button onclick="showCommentModal(${reel.id})">Comment (${reel.comments})</button>
-                        <button onclick="repost(${reel.id})">Repost</button>
-                        <button onclick="savePost(${reel.id}, this)">${reel.is_saved ? 'Unsave' : 'Save'}</button>
+                        <button onclick="likePost(${reel.id}, this)"><i class="fa fa-heart"></i> ${reel.likes}</button>
+                        <button onclick="showCommentModal(${reel.id})"><i class="fa fa-comment"></i> ${reel.comments}</button>
+                        <button onclick="sharePost(${reel.id})"><i class="fa fa-share"></i> Share</button>
+                        ${reel.is_own ? '' : `<button onclick="follow(${reel.user.id})"><i class="fa fa-user-plus"></i> Follow</button>`}
+                        <button onclick="savePost(${reel.id}, this)"><i class="fa fa-bookmark"></i> Save</button>
+                        ${reel.is_own ? '' : `<button onclick="repost(${reel.id})"><i class="fa fa-retweet"></i> Repost</button>`}
+                        <span>Views: ${reel.views}</span>
                         ${reel.is_own ? '' : `
-                            <button onclick="report(${reel.id}, 'reel')">Report</button>
-                            <button onclick="hidePost(${reel.id})">Hide</button>
-                            ${reel.is_following ? `<button onclick="unfollow(${reel.user.id})">Unfollow</button>` : `<button onclick="follow(${reel.user.id})">Follow</button>`}
+                            <button onclick="report(${reel.id}, 'reel')"><i class="fa fa-flag"></i> Report</button>
+                            <button onclick="hidePost(${reel.id})"><i class="fa fa-eye-slash"></i> Hide</button>
+                            <button onclick="toggleNotification(${reel.id})"><i class="fa fa-bell"></i> Turn on notifications</button>
+                            <button onclick="blockUser(${reel.user.id})"><i class="fa fa-ban"></i> Block</button>
                         `}
                     </div>
                 `;
@@ -389,9 +502,9 @@ function likePost(postId, button) {
             return response.json();
         })
         .then(data => {
-            button.textContent = data.message === 'liked' ? `Unlike` : `Like`;
-            const likes = parseInt(button.textContent.match(/\((\d+)\)/)[1]) + (data.message === 'liked' ? 1 : -1);
-            button.textContent = `${data.message === 'liked' ? 'Unlike' : 'Like'} (${likes})`;
+            button.innerHTML = `<i class="fa fa-heart"></i> ${data.message === 'liked' ? 'Unlike' : 'Like'}`;
+            // Update likes count if needed
+            loadHome();
         })
         .catch(() => showModal('login-modal'));
 }
@@ -450,7 +563,7 @@ function savePost(postId, button) {
             return response.json();
         })
         .then(data => {
-            button.textContent = data.message === 'saved' ? 'Unsave' : 'Save';
+            button.innerHTML = `<i class="fa fa-bookmark"></i> ${data.message === 'saved' ? 'Unsave' : 'Save'}`;
         })
         .catch(() => showModal('login-modal'));
 }
