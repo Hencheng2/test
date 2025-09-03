@@ -356,24 +356,24 @@ def load_user(user_id):
 
 
 # --- Startup: Create admin user if provided in config ---
-@app.before_first_request
-def ensure_admin():
+# Ensure admin user exists (Flask 3.x compatible)
+with app.app_context():
     admin_name = getattr(config, "ADMIN_USERNAME", None)
     admin_pass = getattr(config, "ADMIN_PASS", None)
-    if not admin_name or not admin_pass:
-        return
-    admin = User.query.filter_by(username=admin_name).first()
-    if not admin:
-        u = User(
-            username=admin_name,
-            real_name="SociaFam Admin",
-            email=None,
-            unique_key=generate_unique_key(),
-            is_admin=True
-        )
-        u.set_password(admin_pass)
-        db.session.add(u)
-        db.session.commit()
+    if admin_name and admin_pass:
+        admin = User.query.filter_by(username=admin_name).first()
+        if not admin:
+            u = User(
+                username=admin_name,
+                real_name="SociaFam Admin",
+                email=None,
+                unique_key=generate_unique_key(),
+                is_admin=True
+            )
+            u.set_password(admin_pass)
+            db.session.add(u)
+            db.session.commit()
+
 
 
 # --- Routes: Static files & index ---
