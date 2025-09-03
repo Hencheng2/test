@@ -1,11 +1,12 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sociafam</title>
+    <title>SociaFam</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
 <body>
     <nav>
@@ -21,266 +22,189 @@
         <button id="admin-btn" style="display: none;"><i class="fas fa-cog"></i> Admin</button>
     </nav>
 
-    <div class="container">
-        <div id="home" class="section">
-            <div class="stories" id="home-stories"></div>
-            <div id="home-posts"></div>
+    <div id="home" class="section">
+        <div class="stories-container">
+            <h2>Stories</h2>
+            <div class="stories" id="stories"></div>
         </div>
-
-        <div id="reels" class="section"></div>
-
-        <div id="friends" class="section">
-            <div class="tabs">
-                <button onclick="loadFriendsTab('followers')">Followers</button>
-                <button onclick="loadFriendsTab('following')">Following</button>
-                <button onclick="loadFriendsTab('friends')">Friends</button>
-                <button onclick="loadFriendsTab('requests')">Requests</button>
-                <button onclick="loadFriendsTab('suggested')">Suggested</button>
-            </div>
-            <ul id="friends-list" class="friends-list"></ul>
+        <div class="posts" id="posts"></div>
+    </div>
+    <div id="reels" class="section"></div>
+    <div id="friends" class="section">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="friends">Friends</button>
+            <button class="tab-btn" data-tab="followers">Followers</button>
+            <button class="tab-btn" data-tab="following">Following</button>
+            <button class="tab-btn" data-tab="requests">Requests</button>
+            <button class="tab-btn" data-tab="suggested">Suggested</button>
         </div>
-
-        <div id="inbox" class="section">
-            <div class="tabs">
-                <button onclick="loadInboxTab('chats')">Chats</button>
-                <button onclick="loadInboxTab('groups')">Groups</button>
-            </div>
-            <ul id="inbox-list" class="chat-list"></ul>
+        <div id="friends-content"></div>
+    </div>
+    <div id="inbox" class="section">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="chats">Chats</button>
+            <button class="tab-btn" data-tab="groups">Groups</button>
         </div>
-
-        <div id="profile" class="section">
-            <div class="profile-header">
-                <div class="profile-pic">
-                    <img id="profile-pic-img" src="/static/default.jpg">
-                    <i class="fas fa-camera"></i>
-                </div>
-                <div class="profile-info">
-                    <h2 id="profile-name"></h2>
-                    <p id="profile-bio"></p>
-                </div>
-            </div>
-            <div class="profile-stats">
-                <span id="profile-posts"></span>
-                <span id="profile-friends"></span>
-                <span id="profile-followers"></span>
-                <span id="profile-following"></span>
-            </div>
-            <div class="profile-navbar">
-                <button onclick="loadProfileTab('posts')">Posts</button>
-                <button onclick="loadProfileTab('reels')">Reels</button>
-                <button onclick="loadProfileTab('saved')">Saved</button>
-                <button onclick="loadProfileTab('info')">Info</button>
-            </div>
-            <div id="profile-content"></div>
+        <div id="inbox-content"></div>
+    </div>
+    <div id="profile" class="section">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="posts">Posts</button>
+            <button class="tab-btn" data-tab="reels">Reels</button>
+            <button class="tab-btn" data-tab="saved">Saved</button>
         </div>
-
-        <div id="search" class="section">
-            <input type="text" class="search-bar" id="search-bar" placeholder="Search...">
-            <div class="tabs">
-                <button onclick="loadSearchTab('all')">All</button>
-                <button onclick="loadSearchTab('users')">Users</button>
-                <button onclick="loadSearchTab('posts')">Posts</button>
-                <button onclick="loadSearchTab('reels')">Reels</button>
-                <button onclick="loadSearchTab('groups')">Groups</button>
-            </div>
-            <div id="search-results"></div>
+        <div id="profile-content"></div>
+    </div>
+    <div id="search" class="section">
+        <input type="text" id="search-bar" placeholder="Search...">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="all">All</button>
+            <button class="tab-btn" data-tab="users">Users</button>
+            <button class="tab-btn" data-tab="groups">Groups</button>
+            <button class="tab-btn" data-tab="posts">Posts</button>
+            <button class="tab-btn" data-tab="reels">Reels</button>
         </div>
-
-        <div id="addto" class="section">
-            <div class="add-options">
-                <button onclick="showModal('create-post-modal')">Create Post</button>
-                <button onclick="showModal('create-reel-modal')">Create Reel</button>
-                <button onclick="showModal('create-story-modal')">Create Story</button>
-                <button onclick="showModal('create-group-modal')">Create Group</button>
-            </div>
+        <div id="search-content"></div>
+    </div>
+    <div id="addto" class="section">
+        <form id="create-post-form">
+            <textarea name="description" placeholder="What's on your mind?"></textarea>
+            <input type="file" name="file">
+            <select name="visibility">
+                <option value="public">Public</option>
+                <option value="friends">Friends</option>
+            </select>
+            <input type="hidden" name="type" value="post">
+            <button type="submit">Post</button>
+        </form>
+        <form id="create-reel-form">
+            <textarea name="description" placeholder="Describe your reel..."></textarea>
+            <input type="file" name="file">
+            <select name="visibility">
+                <option value="public">Public</option>
+                <option value="friends">Friends</option>
+            </select>
+            <input type="hidden" name="type" value="reel">
+            <button type="submit">Create Reel</button>
+        </form>
+        <form id="create-story-form">
+            <textarea name="description" placeholder="Describe your story..."></textarea>
+            <input type="file" name="file">
+            <input type="hidden" name="visibility" value="friends">
+            <input type="hidden" name="type" value="story">
+            <button type="submit">Create Story</button>
+        </form>
+        <form id="create-group-form">
+            <input type="text" name="name" placeholder="Group Name">
+            <textarea name="description" placeholder="Group Description"></textarea>
+            <input type="file" name="file">
+            <label><input type="checkbox" name="allow_nonadmin_messages" checked> Allow non-admin messages</label>
+            <label><input type="checkbox" name="allow_nonadmin_add_members" checked> Allow non-admin to add members</label>
+            <label><input type="checkbox" name="approve_new_members"> Approve new members</label>
+            <button type="submit">Create Group</button>
+        </form>
+    </div>
+    <div id="menu" class="section">
+        <button id="settings-btn">Settings</button>
+        <button id="logout-btn">Logout</button>
+    </div>
+    <div id="admin" class="section">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="users">Users</button>
+            <button class="tab-btn" data-tab="reports">Reports</button>
         </div>
-
-        <div id="notifications" class="section">
-            <ul id="notifications-list" class="notifications-list"></ul>
-        </div>
-
-        <div id="menu" class="section">
-            <ul class="menu-items">
-                <li onclick="showModal('settings-modal')">Settings</li>
-                <li onclick="logout()">Logout</li>
-            </ul>
-        </div>
-
-        <div id="admin" class="section admin-section">
-            <h2>Admin Dashboard</h2>
-            <div class="tabs">
-                <button onclick="loadAdminTab('users')">Users</button>
-                <button onclick="loadAdminTab('reports')">Reports</button>
-            </div>
-            <div id="admin-content"></div>
-        </div>
+        <div id="admin-content"></div>
     </div>
 
     <div id="login-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
+            <h2>Login</h2>
             <form id="login-form">
-                <input type="text" id="login-identifier" placeholder="Username or Email" required>
-                <input type="password" id="login-password" placeholder="Password" required>
+                <input type="text" name="identifier" placeholder="Username or Email" required>
+                <input type="password" name="password" placeholder="Password" required>
                 <button type="submit">Login</button>
-                <p><a href="#" onclick="showModal('register-modal'); document.getElementById('login-modal').style.display='none'">Register</a></p>
-                <p><a href="#" onclick="showModal('forgot-modal'); document.getElementById('login-modal').style.display='none'">Forgot Password?</a></p>
+                <a href="#" onclick="showModal('register-modal')">Register</a>
+                <a href="#" onclick="showModal('forgot-modal')">Forgot Password?</a>
             </form>
         </div>
     </div>
-
     <div id="register-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
+            <h2>Register</h2>
             <form id="register-form">
-                <input type="text" id="reg-username" placeholder="Username" required>
-                <input type="password" id="reg-password" placeholder="Password" required>
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
                 <button type="submit">Register</button>
             </form>
         </div>
     </div>
-
     <div id="forgot-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
+            <h2>Forgot Password</h2>
             <form id="forgot-form">
-                <input type="text" id="forgot-username" placeholder="Username" required>
-                <input type="text" id="forgot-key" placeholder="Unique Key" required>
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="text" name="unique_key" placeholder="Unique Key" required>
                 <button type="submit">Verify</button>
             </form>
         </div>
     </div>
-
     <div id="reset-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
+            <h2>Reset Password</h2>
             <form id="reset-form">
-                <input type="password" id="reset-password" placeholder="New Password" required>
-                <button type="submit">Reset Password</button>
+                <input type="password" name="password" placeholder="New Password" required>
+                <button type="submit">Reset</button>
             </form>
         </div>
     </div>
-
-    <div id="create-post-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="create-post-form" enctype="multipart/form-data">
-                <textarea placeholder="What's on your mind?" name="description"></textarea>
-                <input type="file" name="file" accept="image/*,video/*">
-                <select name="visibility">
-                    <option value="public">Public</option>
-                    <option value="friends">Friends</option>
-                </select>
-                <input type="hidden" name="type" value="post">
-                <button type="submit">Post</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="create-reel-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="create-reel-form" enctype="multipart/form-data">
-                <textarea placeholder="Reel description" name="description"></textarea>
-                <input type="file" name="file" accept="video/*">
-                <select name="visibility">
-                    <option value="public">Public</option>
-                    <option value="friends">Friends</option>
-                </select>
-                <input type="hidden" name="type" value="reel">
-                <button type="submit">Share Reel</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="create-story-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="create-story-form" enctype="multipart/form-data">
-                <textarea placeholder="Story description" name="description"></textarea>
-                <input type="file" name="file" accept="image/*,video/*">
-                <input type="hidden" name="type" value="story">
-                <button type="submit">Share Story</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="create-group-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="create-group-form" enctype="multipart/form-data">
-                <input type="text" name="name" placeholder="Group Name" required>
-                <textarea name="description" placeholder="Description"></textarea>
-                <input type="file" name="file" accept="image/*">
-                <label><input type="checkbox" name="allow_nonadmin_messages" checked> Allow non-admin messages</label>
-                <label><input type="checkbox" name="allow_nonadmin_add_members" checked> Allow non-admin to add members</label>
-                <label><input type="checkbox" name="approve_new_members"> Approve new members</label>
-                <button type="submit">Create Group</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="comment-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="comment-form">
-                <input type="text" id="comment-text" placeholder="Add a comment..." required>
-                <input type="hidden" id="comment-post-id">
-                <button type="submit">Comment</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="chat-modal" class="modal chat-modal">
-        <div class="modal-content">
-            <div class="chat-navbar">
-                <span class="close">&times;</span>
-                <img id="chat-profile-pic" src="/static/default.jpg">
-                <span id="chat-name"></span>
-            </div>
-            <div class="chat-messages" id="chat-messages"></div>
-            <div class="chat-input">
-                <input type="text" id="chat-input-text" placeholder="Type a message...">
-                <input type="file" id="chat-input-file" accept="image/*,video/*">
-                <button onclick="sendMessage()">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="group-chat-modal" class="modal chat-modal">
-        <div class="modal-content">
-            <div class="chat-navbar">
-                <span class="close">&times;</span>
-                <img id="group-profile-pic" src="/static/default.jpg">
-                <span id="group-name"></span>
-            </div>
-            <div class="chat-messages" id="group-chat-messages"></div>
-            <div class="chat-input">
-                <input type="text" id="group-chat-input-text" placeholder="Type a message...">
-                <input type="file" id="group-chat-input-file" accept="image/*,video/*">
-                <button onclick="sendGroupMessage()">Send</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="settings-modal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <form id="settings-form">
-                <label>Language: <input type="text" name="language" placeholder="English"></label>
-                <label>Theme: <select name="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
-                <button type="submit">Save</button>
-            </form>
-        </div>
-    </div>
-
     <div id="story-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
             <div id="story-content"></div>
         </div>
     </div>
+    <div id="comment-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Comments</h2>
+            <form id="comment-form">
+                <input type="hidden" name="post_id">
+                <textarea name="text" placeholder="Add a comment..." required></textarea>
+                <button type="submit">Comment</button>
+            </form>
+            <div id="comments-list"></div>
+        </div>
+    </div>
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Settings</h2>
+            <form id="settings-form">
+                <input type="text" name="real_name" placeholder="Real Name">
+                <textarea name="bio" placeholder="Bio"></textarea>
+                <input type="date" name="dob" placeholder="Date of Birth">
+                <input type="text" name="gender" placeholder="Gender">
+                <input type="text" name="pronouns" placeholder="Pronouns">
+                <input type="text" name="work" placeholder="Work">
+                <input type="text" name="education" placeholder="Education">
+                <input type="text" name="location" placeholder="Location">
+                <input type="email" name="email" placeholder="Email">
+                <input type="tel" name="phone" placeholder="Phone">
+                <input type="text" name="social_links" placeholder="Social Links">
+                <input type="url" name="website" placeholder="Website">
+                <input type="text" name="relationship" placeholder="Relationship">
+                <input type="text" name="spouse" placeholder="Spouse">
+                <input type="file" name="file">
+                <button type="submit">Save</button>
+            </form>
+        </div>
+    </div>
 
     <script src="/static/script.js"></script>
 </body>
 </html>
+```
