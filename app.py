@@ -5,7 +5,7 @@ import hashlib
 import secrets
 import string
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, redirect, session, send_from_directory
+from flask import Flask, request, jsonify, render_template, redirect, session, send_from_directory, g
 from werkzeug.utils import secure_filename
 from functools import wraps
 
