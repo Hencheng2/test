@@ -1,67 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>SociaFam</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="script.js" defer></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SociaFam</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
 </head>
 <body>
-  <!-- Navbar -->
-  <div class="navbar">
-    <button onclick="loadFeed()">🏠</button>
-    <button onclick="loadReels()">🎬</button>
-    <button onclick="showModal('friends-modal')">👥</button>
-    <button onclick="showModal('inbox-modal')">✉️</button>
-    <button onclick="showModal('profile-modal')">👤</button>
-    <button onclick="showModal('search-modal')">🔍</button>
-    <button onclick="showModal('addto-modal')">➕</button>
-    <button onclick="loadNotifications()">🔔</button>
-    <button onclick="showModal('menu-modal')">☰</button>
-    <button onclick="showModal('admin-modal')">🛠️</button>
-  </div>
 
-  <div class="container">
-    <!-- Stories -->
-    <div id="stories" class="stories"></div>
-    <!-- Feed -->
-    <div id="feed"></div>
-    <!-- Reels -->
-    <div id="reels"></div>
-    <!-- Notifications -->
-    <div id="notifications"></div>
-  </div>
+<!-- All Pages -->
+<div id="home" class="page">...</div>
+<div id="reels" class="page">...</div>
+<div id="friends" class="page">...</div>
+<div id="inbox" class="page">...</div>
+<div id="profile" class="page">...</div>
+<div id="search" class="page">...</div>
+<div id="add" class="page">...</div>
+<div id="notifications" class="page">...</div>
+<div id="menu" class="page">...</div>
+<div id="admin" class="page">...</div>
 
-  <!-- Modals -->
-  <div id="login-modal" class="modal">
-    <div class="modal-content">
-      <h2>Login</h2>
-      <div class="auth-form">
-        <input id="login-username" placeholder="Username">
-        <input id="login-password" type="password" placeholder="Password">
-        <button onclick="doLogin()">Login</button>
-      </div>
-      <p>Or <a href="#" onclick="hideModals();showModal('register-modal')">Register</a></p>
-    </div>
-  </div>
+<!-- Navigation -->
+<div class="navbar">
+    <button id="home-btn"><i class="fa fa-home"></i></button>
+    <button id="reels-btn"><i class="fa fa-video"></i></button>
+    <button id="friends-btn"><i class="fa fa-users"></i></button>
+    <button id="inbox-btn"><i class="fa fa-inbox"></i></button>
+    <button id="profile-btn"><i class="fa fa-user"></i></button>
+    <button id="search-btn"><i class="fa fa-search"></i></button>
+    <button id="add-btn"><i class="fa fa-plus"></i></button>
+    <button id="notifications-btn"><i class="fa fa-bell"></i></button>
+    <button id="menu-btn"><i class="fa fa-bars"></i></button>
+    <button id="admin-btn" style="display:none;"><i class="fa fa-shield-alt"></i></button>
+</div>
 
-  <div id="register-modal" class="modal">
-    <div class="modal-content">
-      <h2>Register</h2>
-      <div class="auth-form">
-        <input id="reg-username" placeholder="Username">
-        <input id="reg-password" type="password" placeholder="Password">
-        <button onclick="doRegister()">Register</button>
-      </div>
-    </div>
-  </div>
+<!-- Modals -->
+<div id="login-modal" class="modal">...</div>
+<div id="register-modal" class="modal">...</div>
+<div id="story-modal" class="modal">...</div>
+<div id="chat-modal" class="modal">...</div>
+<div id="group-modal" class="modal">...</div>
+<div id="edit-profile-modal" class="modal">...</div>
 
-  <div id="friends-modal" class="modal"><div class="modal-content"><h2>Friends</h2></div></div>
-  <div id="inbox-modal" class="modal"><div class="modal-content"><h2>Inbox</h2></div></div>
-  <div id="profile-modal" class="modal"><div class="modal-content"><h2>Profile</h2></div></div>
-  <div id="search-modal" class="modal"><div class="modal-content"><h2>Search</h2></div></div>
-  <div id="addto-modal" class="modal"><div class="modal-content"><h2>Add To</h2></div></div>
-  <div id="menu-modal" class="modal"><div class="modal-content"><h2>Menu</h2></div></div>
-  <div id="admin-modal" class="modal"><div class="modal-content"><h2>Admin Dashboard</h2></div></div>
+<script src="/static/script.js"></script>
 </body>
 </html>
