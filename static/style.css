@@ -4,6 +4,8 @@ body {
     background: #f0f2f5; color: #1c1e21; overflow-x: hidden;
 }
 .container { max-width: 900px; margin: 0 auto; }
+
+/* Navigation */
 .navbar {
     display: flex; justify-content: space-around; align-items: center;
     background: white; padding: 10px 0; border-bottom: 1px solid #ddd;
